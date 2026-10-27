@@ -2,7 +2,7 @@
 
 This policy applies to every repository of
 [ELIXIR Cloud & AAI](https://github.com/elixir-cloud-aai) that has no
-`SECURITY.md` of its own.
+`SECURITY.md` of its own; repositories with their own policy follow that one.
 
 ## Reporting a vulnerability
 
@@ -11,8 +11,8 @@ requests or discussions:
 
 - through GitHub's private vulnerability reporting: open the Security tab of
   the affected repository and select "Report a vulnerability"
-  (`https://github.com/elixir-cloud-aai/<repository>/security/advisories/new`),
-  or
+  (`https://github.com/elixir-cloud-aai/<repository>/security/advisories/new`);
+  if the Security tab has no such button, use email instead; or
 - by email to
   [cloud-service@elixir-europe.org](mailto:cloud-service@elixir-europe.org).
 
@@ -25,9 +25,9 @@ Please include, as far as you can:
 
 ## Supported versions
 
-Security fixes are made in the latest release of each repository: they are
-developed on the development branch (usually `dev`) and released in a new
-version. Older versions get fixes only for critical issues, at the
+Only the latest release of each repository is supported: security fixes are
+released in a new version of its latest release series (the latest minor
+version). Older versions get fixes only for critical issues, at the
 maintainers' discretion.
 
 ## What happens next
@@ -41,7 +41,7 @@ best-effort basis: there are no guaranteed response or fix times.
 ## Scope
 
 This policy covers the code of the organisation's repositories and the
-artifacts published from them (e.g., packages, container images and Helm
+artefacts published from them (e.g., packages, container images and Helm
 charts). Vulnerabilities in deployments run by third parties go to their
 operators, and those in dependencies to their projects; tell us too if they
 affect one of our projects.
