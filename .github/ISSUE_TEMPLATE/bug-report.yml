@@ -7,9 +7,8 @@ body:
     attributes:
       value: >-
         Thanks for taking the time to report a bug! Please search the open
-        issues first, to see whether it has been reported already. Report
-        vulnerabilities privately, as described in the security policy, never
-        in public issues.
+        issues first, to see whether it has been reported already. Never
+        report vulnerabilities here: follow the security policy instead.
   - type: textarea
     id: description
     attributes:
@@ -37,8 +36,6 @@ body:
       description: >-
         Which version (release or commit) are you using, and how do you run
         it (e.g., package, container image, Helm chart)?
-    validations:
-      required: true
   - type: textarea
     id: logs
     attributes:
@@ -52,5 +49,5 @@ body:
     attributes:
       label: Additional context
       description: >-
-        Anything else that helps: environment, screenshots, links, a possible
-        solution.
+        Anything else that helps: environment, links, a possible solution.
+        Attach screenshots and files here.
