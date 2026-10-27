@@ -1,0 +1,11 @@
+---
+blank_issues_enabled: false
+contact_links:
+  - name: Report a vulnerability
+    url: https://github.com/elixir-cloud-aai/.github/blob/main/SECURITY.md
+    about: >-
+      Report vulnerabilities privately, as described in the security policy,
+      never in public issues.
+  - name: Ask a question
+    url: https://elixir-cloud-aai.github.io/about/contact/
+    about: For questions and informal discussions, contact the community.
