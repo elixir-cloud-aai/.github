@@ -1,5 +1,5 @@
 ---
-blank_issues_enabled: true
+blank_issues_enabled: false
 contact_links:
   - name: Report a vulnerability
     url: https://github.com/elixir-cloud-aai/.github/blob/main/SECURITY.md

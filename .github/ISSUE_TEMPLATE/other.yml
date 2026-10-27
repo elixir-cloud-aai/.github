@@ -1,0 +1,15 @@
+---
+name: Other
+description: Anything that is neither a bug nor a feature request.
+labels: ["status: new"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Never report vulnerabilities here: follow the security policy instead.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+    validations:
+      required: true
