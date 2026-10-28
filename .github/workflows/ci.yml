@@ -88,6 +88,30 @@ jobs:
             echo "::error::Expected the check of the bad title to fail, got ${OUTCOME}"
             exit 1
           fi
+      # gate: the rules, on sets of job results
+      - name: Test gate rules
+        run: bash tests/gate/test.sh
+      # gate: the action itself. Passes only if `allow-skipped` reaches the
+      # script
+      - name: Check passing results
+        uses: ./actions/gate
+        with:
+          needs: '{"lint": {"result": "success"}, "push": {"result": "skipped"}}'
+          allow-skipped: push
+      - name: Check failing results
+        id: bad-results
+        continue-on-error: true
+        uses: ./actions/gate
+        with:
+          needs: '{"lint": {"result": "failure"}}'
+      - name: Expect the failing results to fail
+        env:
+          OUTCOME: ${{ steps.bad-results.outcome }}
+        run: |
+          if [[ "${OUTCOME}" != failure ]]; then
+            echo "::error::Expected the check of the failing results to fail, got ${OUTCOME}"
+            exit 1
+          fi
       # scan-image: a clean image passes and yields the full report; an image
       # with fixable critical and high findings fails. No upload to code
       # scanning (the job has no `security-events: write`)

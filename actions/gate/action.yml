@@ -1,0 +1,26 @@
+---
+# Called from the gate job (`passed`, "CI passed") of each repository's CI
+# workflow; see the README of this action
+name: Gate
+description: >-
+  Fail unless every needed job succeeded or was skipped as allowed: fails on
+  no results, on failed or cancelled jobs, and on skipped jobs not listed in
+  `allow-skipped`.
+inputs:
+  needs:
+    description: The results of the needed jobs, as `toJSON(needs)`.
+    required: true
+  allow-skipped:
+    description: IDs of the jobs that may be skipped, separated by whitespace.
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Check results of all jobs
+      shell: bash
+      # Inputs go in through the environment, never into the script
+      env:
+        GATE_NEEDS: ${{ inputs.needs }}
+        GATE_ALLOW_SKIPPED: ${{ inputs.allow-skipped }}
+      run: bash "${GITHUB_ACTION_PATH}/check.sh"
