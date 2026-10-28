@@ -45,3 +45,7 @@ pre-commit run --all-files
 pre-commit run --all-files --hook-stage manual gitleaks-all
 bash tests/pr-title/test.sh
 ```
+
+## License
+
+This repository is licensed under the [Apache License 2.0](LICENSE).
