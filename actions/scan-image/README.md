@@ -8,11 +8,12 @@ Scans a Docker image for known vulnerabilities (and secrets) with
 - if `report` is `true`, a full report, findings without a fix included, is
   uploaded as the workflow artifact `trivy-report-<category>` (JSON and
   table);
-- then the step fails on critical and high findings that have a fix (unless
-  `fail` is `false`).
+- then the step fails on critical and high findings that have a fix, and on
+  critical and high secrets (unless `fail` is `false`).
 
 Accepted findings are listed in `.trivyignore.yaml` in the caller's
-workspace (the checked-out commit) and left out of all results. Use the
+workspace (the checked-out commit) and left out of all results; the file
+must exist, and changes to it need review like code. Use the
 action in jobs without registry credentials or signing permissions, and give
 the job `security-events: write` to upload to code scanning.
 
@@ -39,9 +40,11 @@ steps:
 
 ## Inputs
 
-- `image` (required): the image to scan, local or a registry reference.
+- `image` (required): the image to scan, local or a registry reference
+  (preferably by digest, as each Trivy step resolves it again).
 - `category` (required): the code scanning category of the results, one per
-  image variant.
+  image variant; also part of the report's artifact name, so use only
+  letters, digits, `-`, `_` and `.`.
 - `upload`: upload the fixable findings to code scanning; default `true`
   (set it to `false`, e.g., for pull requests from forks).
 - `report`: upload the full report as a workflow artifact; default `false`.

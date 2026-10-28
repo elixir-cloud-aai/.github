@@ -125,6 +125,8 @@ jobs:
             echo "::error::Expected the scan of the vulnerable image to fail, got ${OUTCOME}"
             exit 1
           fi
+          # Failed because of findings, not before the scan
+          jq -e '[.runs[].results[]] | length > 0' trivy-results.sarif
 
   passed:
     name: CI passed
