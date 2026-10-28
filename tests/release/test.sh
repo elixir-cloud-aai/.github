@@ -39,7 +39,8 @@ expect_plan() {
   fi
 }
 
-# expect_in <name> <expected substring> <notes>
+# expect_in <name> <expected substring> <text>: <text> contains the
+# substring
 expect_in() {
   if [[ "$3" != *"$2"* ]]; then
     echo "NOT OK: $1: expected ${2@Q} in:"
@@ -50,6 +51,7 @@ expect_in() {
   fi
 }
 
+# expect_not_in <name> <substring> <text>: <text> doesn't contain it
 expect_not_in() {
   if [[ "$3" == *"$2"* ]]; then
     echo "NOT OK: $1: unexpected ${2@Q} in:"
@@ -59,6 +61,9 @@ expect_not_in() {
     echo "ok: $1"
   fi
 }
+
+# The cases build on each other: each adds commits and tags to the same
+# history, so add new cases at the end of their section
 
 # No actions yet: docs and CI don't release
 docs="$(commit README.md "docs: add README")"
@@ -101,23 +106,33 @@ expect_plan "${footer}" ""
 git tag v9 "${featish}"
 git tag v10.0.0-rc1 "${featish}"
 expect_plan "${featish}" "tag=v2.0.1 previous=v2.0.0"
-# A release tag that isn't an ancestor fails
+# Only release tags on ancestors count: a stray tag elsewhere (e.g. on a
+# side branch) neither blocks nor bumps releases of `main`
 git switch -q -c side "${first}"
 side="$(commit actions/gate/check.sh "fix: on a side branch (#16)")"
+git tag v9.9.9 "${side}"
 git switch -q main
-expect_plan "${side}" "error"
+expect_plan "${featish}" "tag=v2.0.1 previous=v2.0.0"
+expect_plan "${side}" ""
 expect_plan "not-a-commit" "error"
 
-# Release notes, with a fake `gh`: PR 12 closes issues 11 and 4, PR 7
-# closes issue 6, the others none
+# Release notes, with a fake `gh` that answers like the GitHub API: PR 12
+# closes issues 11 and 4 (and one in another repository), PR 7 closes issue
+# 6, number 15 is no pull request, PR 99 fails; the others close none
 mkdir "${work}/bin"
 cat > "${work}/bin/gh" << 'EOF'
 #!/usr/bin/env bash
+issue() { printf '{"number": %s, "repository": {"nameWithOwner": "%s"}}' "$1" "$2"; }
+pr() { printf '{"data": {"repository": {"pullRequest": {"closingIssuesReferences": {"nodes": [%s]}}}}}\n' "$1"; }
 if [[ "$1 $2" == "api graphql" ]]; then
   case "$*" in
-    *"number=12 "*) echo "4 11" ;;
-    *"number=7 "*) echo "6" ;;
-    *) echo "" ;;
+    *"number=12 "*) pr "$(issue 11 org/repo), $(issue 3 org/other), $(issue 4 org/repo)" ;;
+    *"number=7 "*) pr "$(issue 6 org/repo)" ;;
+    *"number=15 "*)
+      echo '{"data": {"repository": {"pullRequest": null}}, "errors": [{"type": "NOT_FOUND"}]}'
+      exit 1 ;;
+    *"number=99 "*) echo '{"message": "Bad credentials"}'; exit 1 ;;
+    *) pr "" ;;
   esac
 elif [[ "$2" == */releases/generate-notes ]]; then
   printf '%s\n' "## What's Changed" "* fix: a by @u in https://x/pull/7" "" \
@@ -131,33 +146,58 @@ fi
 EOF
 chmod +x "${work}/bin/gh"
 export GH_ARGS_LOG="${work}/gh-args"
+
+# render_notes <tag> <previous> <commit>
+render_notes() {
+  : > "${GH_ARGS_LOG}"
+  PATH="${work}/bin:${PATH}" GH_REPO=org/repo bash "${script}" notes "$@"
+}
+
 commit actions/gate/action.yml "build(deps): Bump actions/x from 1 to 2 (#17)" > /dev/null
 commit actions/gate/check.sh "fix(security): quote job IDs (#18)" > /dev/null
 commit actions/gate/README.md "docs(gate): explain skips (#19)" > /dev/null
+# Breaking, but not for callers: changes no action
+commit .github/workflows/ci.yml "ci!: require the new gate (#20)" > /dev/null
 plain="$(commit actions/gate/check.sh "Merge something without a type")"
-notes="$(PATH="${work}/bin:${PATH}" GH_REPO=org/repo \
-  bash "${script}" notes v3.0.0 v2.0.0 "${plain}")" || notes="error"
-expect_in "intro" "Release v3.0.0 of the shared actions of ELIXIR Cloud & AAI, with changes to \`gate\`. Callers pin" "${notes}"
-expect_not_in "no breaking note without breaking changes" "breaking" "${notes}"
+notes="$(render_notes v2.0.1 v2.0.0 "${plain}")" || notes="error"
+expect_in "intro" "Release v2.0.1 of the shared actions of ELIXIR Cloud & AAI, with changes to \`gate\`. Callers pin" "${notes}"
+expect_not_in "no breaking changes in a patch release" "reaking" "${notes}"
 expect_in "fix with scope security" $'## Security\n\n- Quote job IDs (#18).' "${notes}"
 expect_in "docs" $'## Documentation\n\n- Explain skips (#19).' "${notes}"
-expect_in "maintenance" $'## Maintenance\n\n- Feature flags (#15).\n- Merge something without a type.\n- Dependency updates (#17).' "${notes}"
+expect_in "maintenance (no PR for #15, deps last)" $'## Maintenance\n\n- Feature flags (#15).\n- Require the new gate (#20).\n- Merge something without a type.\n- Dependency updates (#17).' "${notes}"
 expect_in "commits" $'## Commits\n\n* fix: a by @u in https://x/pull/7\n\n## New Contributors\n* @u made their first contribution\n\n**Full Changelog**: https://x/compare/v1.1.0...v2.0.0' "${notes}"
 expect_not_in "no What's Changed" "What's Changed" "${notes}"
-expect_in "previous tag passed" "previous_tag_name=v2.0.0" "$(cat "${GH_ARGS_LOG}")"
-# Order of sections and issue numbers before the PR number
-notes="$(PATH="${work}/bin:${PATH}" GH_REPO=org/repo \
-  bash "${script}" notes v2.0.0 v1.1.0 "${footer}")" || notes="error"
+expect_in "generated notes: tag, commit and previous tag" \
+  "tag_name=v2.0.1 -f target_commitish=${plain} -f previous_tag_name=v2.0.0" \
+  "$(cat "${GH_ARGS_LOG}")"
+
+# Breaking changes of the actions: section, intro; issues of the same
+# repository, sorted, before the PR number
+notes="$(render_notes v2.0.0 v1.1.0 "${footer}")" || notes="error"
 expect_in "breaking intro" "It contains breaking changes" "${notes}"
-expect_in "sections" $'## Breaking changes\n\n- Rename an input (#4, #11, #12).\n- Tighten the gate (#14).\n' "${notes}"
+expect_in "breaking section" $'## Breaking changes\n\n- Rename an input (#4, #11, #12).\n- Tighten the gate (#14).\n' "${notes}"
+
+# A `!` outside the actions is no breaking change for callers
+notes="$(render_notes v1.1.0 v1.0.0 "${outside}")" || notes="error"
+expect_not_in "breaking outside the actions" "reaking" "${notes}"
+expect_in "sections in order" $'## Features\n\n- Add the pr-title action (#9).\n- Change the tests (#10).\n\n## Fixes\n\n- Handle null (#6, #7).\n' "${notes}"
+expect_in "two actions" "with changes to \`gate\` and \`pr-title\`." "${notes}"
+
 # The first release lists all actions
-: > "${GH_ARGS_LOG}"
-notes="$(PATH="${work}/bin:${PATH}" GH_REPO=org/repo \
-  bash "${script}" notes v1.0.0 "" "${first}")" || notes="error"
+notes="$(render_notes v1.0.0 "" "${first}")" || notes="error"
 expect_in "first intro" "The first release of the shared actions of ELIXIR Cloud & AAI: \`gate\`. Callers" "${notes}"
 expect_in "first: maintenance" $'## Maintenance\n\n- Set up CI (#2).\n- Add the gate action (#5).' "${notes}"
 expect_not_in "first: no previous tag" "previous_tag_name" "$(cat "${GH_ARGS_LOG}")"
-# Notes need GH_REPO
+
+# Failures: an API error of the issue lookup, no GH_REPO
+commit actions/gate/check.sh "fix: something (#99)" > /dev/null
+if errors="$(render_notes v2.0.2 v2.0.0 HEAD 2>&1 > /dev/null)"; then
+  echo "NOT OK: notes should fail on an API error"
+  failures=$((failures + 1))
+else
+  expect_in "notes fail on an API error" \
+    "Could not look up the issues closed by #99" "${errors}"
+fi
 if GH_REPO="" bash "${script}" notes v1.0.0 "" "${first}" > /dev/null 2>&1; then
   echo "NOT OK: notes without GH_REPO should fail"
   failures=$((failures + 1))

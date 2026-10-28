@@ -14,15 +14,9 @@ on:
 
 permissions: {}
 
-# One release at a time; a run for a newer push replaces a waiting one (it
-# includes the older commits)
-concurrency:
-  group: release
-  cancel-in-progress: false
-
 jobs:
   publish:
-    name: Release
+    name: Release actions
     # Only pushes to `main` of this repository (not pull requests or forks'
     # branches named `main`), and only if CI passed
     if: >-
@@ -30,6 +24,12 @@ jobs:
       && github.event.workflow_run.event == 'push'
       && github.event.workflow_run.head_branch == 'main'
       && github.event.workflow_run.head_repository.full_name == github.repository
+    # One release at a time; a waiting run is replaced by the run for a
+    # newer push, which includes its commits. On the job, not the workflow,
+    # so that skipped runs (e.g. CI of pull requests) replace nothing
+    concurrency:
+      group: release
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

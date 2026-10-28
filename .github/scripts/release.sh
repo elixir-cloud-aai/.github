@@ -3,15 +3,16 @@
 # from the root of a full clone (all commits and tags):
 #
 #   release.sh plan <commit>
-#     Prints `tag=<vX.Y.Z>` and `previous=<last tag or empty>` if <commit>
-#     needs a release, nothing otherwise. A release is needed if a commit
-#     since the last release tag changed a file under `actions/` other than
-#     Markdown; the bump follows the Conventional Commit messages of these
-#     commits: `!` or a `BREAKING CHANGE:` footer gives a major, `feat` a
-#     minor, anything else a patch release. The first release is v1.0.0.
-#     Prints nothing if <commit> is already part of the last release.
+#     Prints `tag=<vX.Y.Z>` and `previous=<last release or empty>` if
+#     <commit> needs a release, nothing otherwise. A release is needed if a
+#     commit since the last release (the highest `vX.Y.Z` tag on an ancestor
+#     of <commit>) changed a file under `actions/` other than Markdown; the
+#     bump follows the Conventional Commit messages of these commits: `!` or
+#     a `BREAKING CHANGE:` footer gives a major, `feat` a minor, anything else
+#     a patch release. The first release is v1.0.0. Prints nothing if
+#     <commit> is already part of a release.
 #
-#   release.sh notes <tag> <previous tag or ""> <commit>
+#   release.sh notes <tag> <previous release or ""> <commit>
 #     Prints the release notes of <tag> in the organisation's format. Calls
 #     `gh` for the issues that each pull request closes and for GitHub's
 #     generated notes; needs GH_REPO (`<owner>/<repo>`) and a token.
@@ -19,63 +20,80 @@ set -euo pipefail
 
 # The pathspec of the files that callers run: the actions, without docs
 release_paths=(actions ':(exclude,glob)actions/**/*.md')
+# Release tags
+tag_pattern='^v[0-9]+\.[0-9]+\.[0-9]+$'
 
 die() {
   echo "::error title=Release::$*" >&2
   exit 1
 }
 
-# The highest `vX.Y.Z` tag, or nothing. No early exit in the pipeline, so
-# that `git tag` never gets SIGPIPE
-last_tag() {
-  git tag --list 'v*' --sort=-v:refname \
-    | awk '/^v[0-9]+\.[0-9]+\.[0-9]+$/ && !found { print; found = 1 }'
+# The highest release tag on <commit> or its ancestors, or nothing. No early
+# exit in the pipeline, so that `git tag` never gets SIGPIPE
+last_release() {
+  git tag --merged "$1" --list 'v*' --sort=-v:refname \
+    | awk -v pattern="${tag_pattern}" '$0 ~ pattern && !found { print; found = 1 }'
 }
 
-# The range of commits from <previous tag> (exclusive) to <commit>
+# Whether a release tag points to <commit> or one of its descendants
+released() {
+  git tag --contains "$1" --list 'v*' \
+    | awk -v pattern="${tag_pattern}" '$0 ~ pattern { found = 1 } END { exit !found }'
+}
+
+# The range of commits from <previous release> (exclusive) to <commit>
 commit_range() {
-  local previous="$1" commit="$2"
-  if [[ -n "${previous}" ]]; then
-    echo "${previous}..${commit}"
+  if [[ -n "$1" ]]; then
+    echo "$1..$2"
   else
-    echo "${commit}"
+    echo "$2"
   fi
 }
 
-# 3 for a breaking change, 2 for a feature, 1 for anything else
-bump_level() {
+# Parses the commit message <message> into the variables `type` (lowercase;
+# empty if the subject is no Conventional Commit), `scope`, `description`
+# (without the pull request number), `pr` (the number in a trailing
+# `(#<number>)`, as in squash merges, or empty) and `breaking` (1 for `!` or
+# a `BREAKING CHANGE:` footer, else 0)
+parse_message() {
   local message="$1" subject
   subject="${message%%$'\n'*}"
-  if [[ "${subject}" =~ ^[A-Za-z]+(\([^\)]*\))?!: ]] \
-    || grep -qE '^BREAKING[ -]CHANGE:' <<< "${message}"; then
-    echo 3
-  elif [[ "${subject}" =~ ^feat(\([^\)]*\))?: ]]; then
-    echo 2
-  else
-    echo 1
+  type="" scope="" pr="" breaking=0
+  if [[ "${subject}" =~ \ \(#([0-9]+)\)$ ]]; then
+    pr="${BASH_REMATCH[1]}"
+    subject="${subject% (#*}"
+  fi
+  description="${subject}"
+  if [[ "${subject}" =~ ^([A-Za-z]+)(\(([^\)]*)\))?(!?):\ +(.*)$ ]]; then
+    type="${BASH_REMATCH[1],,}" scope="${BASH_REMATCH[3]}"
+    description="${BASH_REMATCH[5]}"
+    [[ -z "${BASH_REMATCH[4]}" ]] || breaking=1
+  fi
+  if grep -qE '^BREAKING[ -]CHANGE:' <<< "${message}"; then
+    breaking=1
   fi
 }
 
 plan() {
   local commit previous level=0 message major minor patch
+  local type scope description pr breaking
   [[ $# -eq 1 ]] || die "Usage: release.sh plan <commit>"
   commit="$(git rev-parse --verify --quiet "$1^{commit}")" \
     || die "Not a commit: $1"
-  previous="$(last_tag)"
-  if [[ -n "${previous}" ]]; then
-    # Already released, e.g. a run for an older push that waited in the
-    # queue while a newer push was released
-    if git merge-base --is-ancestor "${commit}" "${previous}"; then
-      return 0
-    fi
-    git merge-base --is-ancestor "${previous}" "${commit}" \
-      || die "The last release ${previous} is not an ancestor of ${commit}"
+  # Already released, e.g. a run for an older push that waited while a
+  # newer push was released
+  if released "${commit}"; then
+    return 0
   fi
+  previous="$(last_release "${commit}")"
   while IFS= read -r -d '' message; do
-    local this
-    this="$(bump_level "${message}")"
-    if ((this > level)); then
-      level="${this}"
+    parse_message "${message}"
+    if ((breaking)); then
+      level=3
+    elif [[ "${type}" == feat ]] && ((level < 2)); then
+      level=2
+    elif ((level < 1)); then
+      level=1
     fi
   done < <(git log -z --format=%B "$(commit_range "${previous}" "${commit}")" \
     -- "${release_paths[@]}")
@@ -94,10 +112,12 @@ plan() {
 }
 
 # The numbers of the issues in this repository that pull request <number>
-# closes, space-separated
+# closes, space-separated. Nothing if <number> is no pull request (e.g., an
+# issue named in a commit pushed directly); fails on other API errors
 closed_issues() {
+  local response
   # shellcheck disable=SC2016  # GraphQL variables, not shell expansions
-  gh api graphql -F number="$1" -F owner="${GH_REPO%%/*}" \
+  if ! response="$(gh api graphql -F number="$1" -F owner="${GH_REPO%%/*}" \
     -F name="${GH_REPO#*/}" -f query='
       query($owner: String!, $name: String!, $number: Int!) {
         repository(owner: $owner, name: $name) {
@@ -107,9 +127,18 @@ closed_issues() {
             }
           }
         }
-      }' --jq '[.data.repository.pullRequest.closingIssuesReferences.nodes[]
-        | select(.repository.nameWithOwner == env.GH_REPO)
-        | .number] | sort | map(tostring) | join(" ")'
+      }')"; then
+    if jq -e '.data.repository.pullRequest == null
+        and any(.errors[]?; .type == "NOT_FOUND")' \
+        > /dev/null 2>&1 <<< "${response}"; then
+      return 0
+    fi
+    die "Could not look up the issues closed by #$1: ${response}"
+  fi
+  jq -r --arg repo "${GH_REPO}" '
+    [.data.repository.pullRequest.closingIssuesReferences.nodes[]
+      | select(.repository.nameWithOwner == $repo) | .number]
+    | sort | map(tostring) | join(" ")' <<< "${response}"
 }
 
 # Drops leading and trailing blank lines
@@ -129,101 +158,100 @@ refs() {
   echo "${out}"
 }
 
-# Prints `- <items>` sections in the organisation's order
-print_sections() {
-  local -n _sections="$1"
-  local heading
-  for heading in "Breaking changes" Features Security Fixes Documentation \
-    Maintenance; do
-    if [[ -n "${_sections[${heading}]:-}" ]]; then
-      printf '\n## %s\n\n%s' "${heading}" "${_sections[${heading}]}"
+# Joins the arguments as code spans: "`a`, `b` and `c`"
+code_list() {
+  local out="" i
+  for ((i = 1; i <= $#; i++)); do
+    if ((i > 1)); then
+      if ((i == $#)); then out+=" and "; else out+=", "; fi
     fi
+    out+="\`${!i}\`"
   done
+  echo "${out}"
 }
 
 notes() {
-  local tag previous commit range sha message subject type scope desc
-  local pr heading generated count_major=0 count_feat=0 count_fix=0
-  local -A sections=()
-  local -a deps=() changed=()
+  local tag previous commit range sha message heading generated issues
+  local type scope description pr breaking
+  local -A sections=() relevant=()
+  local -a deps=() changed=() numbers=()
   [[ $# -eq 3 ]] || die "Usage: release.sh notes <tag> <previous> <commit>"
   tag="$1" previous="$2" commit="$3"
   [[ -n "${GH_REPO:-}" ]] || die "GH_REPO is not set"
   range="$(commit_range "${previous}" "${commit}")"
 
+  # Commits that changed the actions: only their breaking changes are
+  # breaking for callers (as in `plan`)
+  while IFS= read -r sha; do
+    relevant[${sha}]=1
+  done < <(git rev-list "${range}" -- "${release_paths[@]}")
+
   while IFS= read -r sha; do
     message="$(git log -1 --format=%B "${sha}")"
-    subject="${message%%$'\n'*}"
-    pr="" type="" scope=""
-    if [[ "${subject}" =~ \ \(#([0-9]+)\)$ ]]; then
-      pr="${BASH_REMATCH[1]}"
-      subject="${subject% (#*}"
-    fi
-    desc="${subject}"
-    if [[ "${subject}" =~ ^([A-Za-z]+)(\(([^\)]*)\))?!?:\ +(.*)$ ]]; then
-      type="${BASH_REMATCH[1],,}" scope="${BASH_REMATCH[3]}"
-      desc="${BASH_REMATCH[4]}"
-    fi
-    local -a numbers=()
+    parse_message "${message}"
+    numbers=()
     if [[ -n "${pr}" ]]; then
-      read -r -a numbers <<< "$(closed_issues "${pr}")"
+      issues="$(closed_issues "${pr}")"
+      read -r -a numbers <<< "${issues}"
       numbers+=("${pr}")
     fi
     if [[ "${type}" == build && "${scope}" == deps ]]; then
       deps+=("${numbers[@]}")
       continue
     fi
-    case "$(bump_level "${message}"):${type}:${scope}" in
-      3:*) heading="Breaking changes" count_major=$((count_major + 1)) ;;
-      *:*:security) heading=Security ;;
-      *:feat:*) heading=Features count_feat=$((count_feat + 1)) ;;
-      *:fix:*) heading=Fixes count_fix=$((count_fix + 1)) ;;
-      *:docs:*) heading=Documentation ;;
-      *) heading=Maintenance ;;
-    esac
-    desc="${desc^}"
-    if ((${#numbers[@]} > 0)); then
-      desc+=" ($(refs "${numbers[@]}"))"
+    if ((breaking)) && [[ -n "${relevant[${sha}]:-}" ]]; then
+      heading="Breaking changes"
+    else
+      case "${type}:${scope}" in
+        *:security) heading=Security ;;
+        feat:*) heading=Features ;;
+        fix:*) heading=Fixes ;;
+        docs:*) heading=Documentation ;;
+        *) heading=Maintenance ;;
+      esac
     fi
-    sections[${heading}]+="- ${desc}."$'\n'
+    description="${description^}"
+    if ((${#numbers[@]} > 0)); then
+      description+=" ($(refs "${numbers[@]}"))"
+    fi
+    sections[${heading}]+="- ${description}."$'\n'
   done < <(git rev-list --reverse "${range}")
   if ((${#deps[@]} > 0)); then
     sections[Maintenance]+="- Dependency updates ($(refs "${deps[@]}"))."$'\n'
   fi
 
-  # The actions whose files (other than docs) changed
+  # Intro: the actions whose files (other than docs) changed, and whether
+  # the release is a major one
   mapfile -t changed < <(git diff --name-only \
     "${previous:-$(git hash-object -t tree /dev/null)}" "${commit}" \
     -- "${release_paths[@]}" | awk -F/ '{ print $2 }' | sort -u)
-
-  # Intro
-  local names=""
-  if ((${#changed[@]} > 0)); then
-    # shellcheck disable=SC2016  # Markdown code spans, not expansions
-    names="$(printf '`%s`, ' "${changed[@]}")"
-    names="${names%, }"
-  fi
   if [[ -z "${previous}" ]]; then
     printf 'The first release of the shared actions of ELIXIR Cloud & AAI'
-    [[ -z "${names}" ]] || printf ': %s' "${names}"
+    ((${#changed[@]} == 0)) || printf ': %s' "$(code_list "${changed[@]}")"
   else
     printf 'Release %s of the shared actions of ELIXIR Cloud & AAI' "${tag}"
-    [[ -z "${names}" ]] || printf ', with changes to %s' "${names}"
+    ((${#changed[@]} == 0)) \
+      || printf ', with changes to %s' "$(code_list "${changed[@]}")"
   fi
   # shellcheck disable=SC2016  # Markdown code spans, not expansions
   printf '. Callers pin `elixir-cloud-aai/.github/actions/<name>@<commit> # %s`; Dependabot proposes the update.' \
     "${tag}"
-  if ((count_major > 0)); then
+  if [[ -n "${previous}" && "${tag%%.*}" != "${previous%%.*}" ]]; then
     printf ' It contains breaking changes: see below for what callers have to change.'
   fi
   printf '\n'
 
-  print_sections sections
+  for heading in "Breaking changes" Features Security Fixes Documentation \
+    Maintenance; do
+    if [[ -n "${sections[${heading}]:-}" ]]; then
+      printf '\n## %s\n\n%s' "${heading}" "${sections[${heading}]}"
+    fi
+  done
 
   # GitHub's generated notes: the list of pull requests (without its
   # heading) under `## Commits`, the `**Full Changelog**` line last
   local -a args=(-f tag_name="${tag}" -f target_commitish="${commit}")
-  [[ -n "${previous}" ]] && args+=(-f previous_tag_name="${previous}")
+  [[ -z "${previous}" ]] || args+=(-f previous_tag_name="${previous}")
   generated="$(gh api "repos/${GH_REPO}/releases/generate-notes" \
     "${args[@]}" --jq .body)"
   local commits changelog

@@ -38,8 +38,14 @@ A run that finds no changes to release, or a commit that is already part of
 a release, ends without creating anything. If the release step fails (e.g.,
 because of a tag ruleset), nothing is created; rerun the failed workflow run
 once the cause is fixed, or let the next push to `main` release the changes.
-Don't create tags or releases by hand: the workflow computes the next version
-from the existing tags.
+
+Every merged change to an action is released on its own, so milestones are
+not used here: a change must be complete and safe for callers when it is
+merged. The tags are lightweight tags that the release API creates, not
+signed annotated tags. Tags and releases are never changed or reused: a
+release with a mistake (e.g., a wrong version) is fixed by the next release.
+Don't create `vX.Y.Z` tags or releases by hand: the workflow computes the
+next version from the release tags on `main`.
 
 ## Versions
 
@@ -65,10 +71,15 @@ The workflow writes the notes from the commits since the last release:
    release, points to the breaking changes.
 2. Grouped sections, empty ones left out, in this order:
    `## Breaking changes`, `## Features`, `## Security`, `## Fixes`,
-   `## Documentation`, `## Maintenance`, by the type of each commit (scope
-   `security` for `## Security`; Dependabot's updates as one bullet under
-   `## Maintenance`). Each bullet is the description of a pull request title
-   and ends with the issues that the pull request closes and its number.
+   `## Documentation`, `## Maintenance`. Each commit goes into one section:
+   breaking changes of the actions (as for the version) into
+   `## Breaking changes`; otherwise scope `security` into `## Security`,
+   `feat` into `## Features`, `fix` into `## Fixes`, `docs` into
+   `## Documentation`, and all other types (also `perf`, `refactor`,
+   `revert` and subjects without a type) into `## Maintenance`, where
+   Dependabot's updates (`build(deps)`) share one bullet. Each bullet is the
+   description of a pull request title and ends with the issues that the
+   pull request closes and its number.
 3. `## Commits`: GitHub's generated notes, without their `## What's Changed`
    header.
 4. The last line is GitHub's generated `**Full Changelog**: …` line.
