@@ -7,7 +7,7 @@
 set -euo pipefail
 
 needs="${GATE_NEEDS:-}"
-read -r -a allowed <<< "${GATE_ALLOW_SKIPPED:-}" || true
+read -r -d "" -a allowed <<< "${GATE_ALLOW_SKIPPED:-}" || true
 
 if ! jq -e 'type == "object" and length > 0' >/dev/null 2>&1 <<< "${needs}"; then
   echo "::error title=Gate::No job results (is \`needs\` empty?)"

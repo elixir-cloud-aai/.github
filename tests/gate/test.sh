@@ -33,6 +33,8 @@ expect pass "{\"lint\":${ok},\"test\":${ok}}"
 expect fail "{\"lint\":${ok},\"test\":{\"result\":\"failure\"}}" "" "test: failure"
 expect fail "{\"lint\":{\"result\":\"cancelled\"},\"test\":${ok}}" "" "lint: cancelled"
 expect pass "{\"lint\":${ok},\"push\":{\"result\":\"skipped\"}}" "push publish"
+# IDs on separate lines (e.g. a YAML block scalar)
+expect pass "{\"push\":{\"result\":\"skipped\"},\"publish\":{\"result\":\"skipped\"}}" $'push\npublish\n'
 expect fail "{\"lint\":${ok},\"push\":{\"result\":\"skipped\"}}" "publish" "push: skipped"
 expect fail "{\"lint\":${ok},\"push\":{\"result\":\"skipped\"}}" "" "push: skipped"
 # An allowed skip doesn't excuse a failure of the same job
