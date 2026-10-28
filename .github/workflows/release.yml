@@ -1,0 +1,83 @@
+---
+# Releases the shared actions, without manual steps (see RELEASING.md):
+# after CI passed for a push to `main`, creates the next `vX.Y.Z` tag and a
+# GitHub release on the pushed commit, if a commit since the last release
+# changed an action (`.github/scripts/release.sh plan`). The release API
+# creates the tag, so nothing is pushed to `main`. Callers' Dependabot then
+# bumps their pins `@<commit> # vX.Y.Z`
+name: Release
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions: {}
+
+# One release at a time; a run for a newer push replaces a waiting one (it
+# includes the older commits)
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Release
+    # Only pushes to `main` of this repository (not pull requests or forks'
+    # branches named `main`), and only if CI passed
+    if: >-
+      github.event.workflow_run.conclusion == 'success'
+      && github.event.workflow_run.event == 'push'
+      && github.event.workflow_run.head_branch == 'main'
+      && github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # Create the tag and the release
+      contents: write
+      # Look up the issues that each pull request closes
+      issues: read
+      pull-requests: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - name: Plan the release
+        id: plan
+        env:
+          COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          plan="$(bash .github/scripts/release.sh plan "${COMMIT}")"
+          echo "${plan}" >> "${GITHUB_OUTPUT}"
+          if [[ -z "${plan}" ]]; then
+            echo "No release: no changes to the actions since the last release" \
+              >> "${GITHUB_STEP_SUMMARY}"
+          fi
+      - name: Write the release notes
+        if: steps.plan.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.plan.outputs.tag }}
+          PREVIOUS: ${{ steps.plan.outputs.previous }}
+          COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          bash .github/scripts/release.sh notes "${TAG}" "${PREVIOUS}" \
+            "${COMMIT}" > "${RUNNER_TEMP}/notes.md"
+          cat "${RUNNER_TEMP}/notes.md" >> "${GITHUB_STEP_SUMMARY}"
+      # Creates the tag on the commit; fails without creating anything if
+      # the tag exists or a tag ruleset doesn't let GitHub Actions create it
+      - name: Create the release
+        if: steps.plan.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.plan.outputs.tag }}
+          COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          gh release create "${TAG}" --target "${COMMIT}" --title "${TAG}" \
+            --notes-file "${RUNNER_TEMP}/notes.md"

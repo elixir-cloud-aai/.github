@@ -19,8 +19,9 @@ See GitHub's documentation on
 [default community health files](https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions/creating-a-default-community-health-file).
 
 The repository also holds composite actions, in `actions/<name>/`, that the
-other repositories share and pin by commit. [RELEASING.md](RELEASING.md)
-describes how they are versioned and released.
+other repositories share and pin to the commit of a release. Releases are
+automatic; [RELEASING.md](RELEASING.md) describes how they are versioned and
+released.
 
 - [`gate`](actions/gate/README.md): checks the results of the jobs a CI
   gate needs.
@@ -35,8 +36,8 @@ hooks of `.pre-commit-config.yaml`: YAML syntax and GitHub's schemas (issue
 forms, workflows, actions, Dependabot), Markdown style (markdownlint),
 secrets (gitleaks), shell scripts (shellcheck) and the workflows
 (actionlint). Its `test` job runs the tests of the composite actions
-(`tests/<action>/test.sh`) and the actions themselves. Run them locally
-before you push:
+(`tests/<action>/test.sh`), the actions themselves and the tests of the
+release scripts (`tests/release/test.sh`). Run them locally before you push:
 
 ```sh
 pre-commit install
@@ -44,6 +45,8 @@ pre-commit run --all-files
 # The whole checkout, as in CI (also untracked and ignored files)
 pre-commit run --all-files --hook-stage manual gitleaks-all
 bash tests/pr-title/test.sh
+bash tests/gate/test.sh
+bash tests/release/test.sh
 ```
 
 ## License

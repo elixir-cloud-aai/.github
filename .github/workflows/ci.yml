@@ -2,7 +2,9 @@
 # Everything that must pass on pull requests and pushes to `main`: lint the
 # Markdown, YAML (issue forms, workflows, the Dependabot configuration and
 # the composite actions in `actions/`) and the workflows (actionlint), and
-# test the composite actions (each action adds its tests to the `test` job).
+# test the composite actions (each action adds its tests to the `test` job)
+# and the release scripts. A passed run for a push to `main` triggers the
+# `Release` workflow (`release.yml`).
 # The gate `passed` ("CI passed") is the only required check. No `paths:`
 # filters, so that the gate always reports; skip jobs with `if:` instead (and
 # allow the skip in the gate)
@@ -88,6 +90,10 @@ jobs:
             echo "::error::Expected the check of the bad title to fail, got ${OUTCOME}"
             exit 1
           fi
+      # Release scripts (`.github/scripts/release.sh`): version planning
+      # and release notes, on a scratch repository
+      - name: Test release scripts
+        run: bash tests/release/test.sh
       # gate: the rules, on sets of job results
       - name: Test gate rules
         run: bash tests/gate/test.sh

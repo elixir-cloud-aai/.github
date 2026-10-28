@@ -14,8 +14,11 @@ script (bash and jq): no token, no third-party action.
 
 The gate job stays in the repository's `ci.yml`, so that the required check
 keeps its name (a reusable workflow's check would be named
-`CI passed / …`). Use the commit and version of a release of this
-repository:
+`CI passed / …`). Pin the commit and version of a
+[release](https://github.com/elixir-cloud-aai/.github/releases) of this
+repository; Dependabot (`github-actions` ecosystem) in the calling
+repository bumps the pin to new releases (see
+[RELEASING.md](../../RELEASING.md)):
 
 ```yaml
 passed:
