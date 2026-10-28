@@ -18,9 +18,11 @@ that all repositories follow the same rules.
 See GitHub's documentation on
 [default community health files](https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions/creating-a-default-community-health-file).
 
-The repository will also hold composite actions, in `actions/<name>/`, that
-the other repositories share and pin by commit. [RELEASING.md](RELEASING.md)
+The repository also holds composite actions, in `actions/<name>/`, that the
+other repositories share and pin by commit. [RELEASING.md](RELEASING.md)
 describes how they are versioned and released.
+
+- [`pr-title`](actions/pr-title/README.md): checks pull request titles.
 
 ## Development
 

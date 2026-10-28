@@ -1,0 +1,31 @@
+---
+# Called from a thin `.github/workflows/pr-title.yml` in each repository; see
+# the README of this action
+name: PR title
+description: >-
+  Check that a pull request title follows the organisation's convention:
+  Conventional Commits, at most 50 characters in total, no trailing period.
+inputs:
+  title:
+    description: The title to check; by default, that of the pull request.
+    required: false
+    default: ${{ github.event.pull_request.title }}
+  types:
+    description: Allowed types, separated by whitespace.
+    required: false
+    default: build chore ci docs feat fix perf refactor revert style test
+  max-length:
+    description: Maximum length of the whole title, in characters.
+    required: false
+    default: "50"
+runs:
+  using: composite
+  steps:
+    - name: Check PR title
+      shell: bash
+      # Inputs go in through the environment, never into the script
+      env:
+        PR_TITLE: ${{ inputs.title }}
+        PR_TITLE_TYPES: ${{ inputs.types }}
+        PR_TITLE_MAX_LENGTH: ${{ inputs.max-length }}
+      run: bash "${GITHUB_ACTION_PATH}/check.sh"
