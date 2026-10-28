@@ -18,8 +18,9 @@ title="${PR_TITLE-}"
 max_length="${PR_TITLE_MAX_LENGTH:-50}"
 read -r -d '' -a types <<< "${PR_TITLE_TYPES-}" || true
 
-if ! [[ "${max_length}" =~ ^[1-9][0-9]*$ ]]; then
-  echo "::error title=PR title::Invalid maximum length (a positive integer is required)"
+# Up to 9999, so that Bash arithmetic neither overflows nor reads octal
+if ! [[ "${max_length}" =~ ^[1-9][0-9]{0,3}$ ]]; then
+  echo "::error title=PR title::Invalid maximum length (an integer from 1 to 9999 is required)"
   exit 1
 fi
 if ((${#types[@]} == 0)); then
@@ -41,17 +42,17 @@ if [[ "${title}" == *$'\n'* || "${title}" == *$'\r'* ]]; then
   title="${title//[$'\n\r']/ }"
 fi
 
-if ((length > max_length)); then
+if ((length > 10#${max_length})); then
   errors+=("Too long: ${length} characters, at most ${max_length} allowed")
 fi
 
-# Whitespace that [[:space:]] misses: no-break, figure, narrow no-break and
-# zero-width spaces
-invisible=$'\u00a0\u2007\u202f\u200b'
+# Whitespace that [[:space:]] misses: no-break, figure, narrow no-break,
+# zero-width and zero-width no-break spaces
+invisible=$'\u00a0\u2007\u202f\u200b\ufeff'
 
-# Type, optional scope (no spaces or parentheses), optional `!`, then `: `
+# Type (lowercase letters, digits, hyphens), optional scope (no spaces or parentheses), optional `!`, then `: `
 # and a description that starts with a visible character
-format="^([a-z]+)(\\([^()[:space:]]+\\))?(!)?: ([^[:space:]${invisible}].*)\$"
+format="^([a-z][a-z0-9-]*)(\\([^()[:space:]${invisible}]+\\))?(!)?: ([^[:space:]${invisible}].*)\$"
 if [[ "${title}" =~ ${format} ]]; then
   type="${BASH_REMATCH[1]}"
   description="${BASH_REMATCH[4]}"
@@ -67,7 +68,7 @@ if [[ "${title}" =~ ${format} ]]; then
   fi
   # A capitalised word (`Add`), not an acronym or name (`API`, `OpenAPI`,
   # `S3`, `C++`)
-  if [[ "${description}" =~ ^[[:upper:]][[:lower:]]*([[:space:]]|$) ]]; then
+  if [[ "${description}" =~ ^[[:upper:]][[:lower:]]*([[:space:]${invisible},.:!?]|$) ]]; then
     errors+=("The description starts with a capitalised word; use lowercase")
   fi
 else

@@ -37,6 +37,12 @@ on:
 
 permissions: {}
 
+# A newer run (e.g. after the title was edited again) cancels older ones, so
+# that the check reports on the current title
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   title:
     name: PR title

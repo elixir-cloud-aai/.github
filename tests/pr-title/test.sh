@@ -24,7 +24,7 @@ expect() {
   elif [[ -n "${message}" && "${output}" != *"${message}"* ]]; then
     echo "NOT OK: expected output ${message@Q}, got ${output@Q}: ${title@Q}"
     failures=$((failures + 1))
-  elif grep -qE '^::(warning|notice|debug|add-mask|stop-commands)' <<< "${output}"; then
+  elif grep -E '^::' <<< "${output}" | grep -qvE '^::error title=PR title::'; then
     echo "NOT OK: the title injected a workflow command: ${title@Q}"
     failures=$((failures + 1))
   else
@@ -71,6 +71,10 @@ expect fail "fix: a bc" "Too long: 9 characters, at most 8 allowed" 8
 # Types
 expect fail "feature: add pagination" "Type 'feature' is not allowed"
 expect fail "feat: add x" "use one of: fix" 50 "fix"
+# Custom types with digits and hyphens
+expect pass "security-fix: patch x" "" 50 "fix security-fix"
+expect pass "v2: migrate x" "" 50 "v2"
+expect fail "-fix: patch x" "Not in the format"
 # Types on separate lines (a YAML block scalar)
 expect pass "feat: add x" "" 50 $'fix\nfeat\n'
 expect fail "Fix: handle empty input" "Not in the format"
@@ -94,6 +98,9 @@ expect fail "fix: handle empty input…" "ends with a period"
 # Capitalised description
 expect fail "fix: Handle empty input" "starts with a capitalised word"
 expect fail "fix: Add" "starts with a capitalised word"
+expect fail "fix: Add, then remove x" "starts with a capitalised word"
+expect fail "fix: Fix: the parser" "starts with a capitalised word"
+expect fail $'fix: Add\u00a0x' "starts with a capitalised word"
 # Empty description or title
 expect fail "fix: " "Not in the format"
 expect fail "" "The title is empty"
@@ -104,6 +111,9 @@ expect fail $'fix: handle empty input\u00a0' "ends with whitespace"
 expect fail $'fix: handle empty input\u202f' "ends with whitespace"
 expect fail $'fix: handle empty input\u200b' "ends with whitespace"
 expect fail $'fix: \u00a0Add x' "Not in the format"
+expect fail $'fix: \ufeffadd x' "Not in the format"
+expect fail $'fix: add x\ufeff' "ends with whitespace"
+expect fail $'fix(a\u00a0b): add x' "Not in the format"
 
 # Several rules at once are all reported (51 characters)
 several="feature: Add a very long title that goes on and on."
@@ -115,12 +125,17 @@ expect fail "${several}" "ends with a period"
 # Invalid inputs
 expect fail "fix: a" "Invalid maximum length" abc
 expect fail "fix: a" "Invalid maximum length" 0
+expect fail "fix: a" "Invalid maximum length" 08
+expect fail "fix: a" "Invalid maximum length" 99999999999999999999
+expect pass "fix: a" "" 9999
 expect fail "fix: a" "Invalid maximum length" $'1\n::warning::x'
 expect fail "fix: a" "No allowed types given" 50 " "
 
 # More than one line, without injecting a workflow command
 expect fail $'fix: handle empty input\n::warning::injected' "more than one line"
 expect fail $'fix: handle empty input\r::warning::injected' "more than one line"
+expect fail $'fix: handle empty input\n::error::injected' "more than one line"
+expect fail $'fix: a\n::error title=PR title::injected' "more than one line"
 # Shell metacharacters are data, not code
 marker="$(mktemp -u)"
 expect pass "fix: \$(touch ${marker}) \`touch ${marker}\`" "" 200
