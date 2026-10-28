@@ -17,3 +17,20 @@ that all repositories follow the same rules.
 
 See GitHub's documentation on
 [default community health files](https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions/creating-a-default-community-health-file).
+
+The repository will also hold composite actions, in `actions/<name>/`, that
+the other repositories share and pin by commit. [RELEASING.md](RELEASING.md)
+describes how they are versioned and released.
+
+## Development
+
+CI (`.github/workflows/ci.yml`) runs the [pre-commit](https://pre-commit.com)
+hooks of `.pre-commit-config.yaml`: YAML syntax and GitHub's schemas (issue
+forms, workflows, actions, Dependabot), Markdown style (markdownlint),
+secrets (gitleaks) and the workflows (actionlint). Run them locally before
+you push:
+
+```sh
+pre-commit install
+pre-commit run --all-files
+```
