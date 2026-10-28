@@ -22,8 +22,10 @@ plain script: no token, no third-party action.
 
 ## Usage
 
-Add `.github/workflows/pr-title.yml` to the repository, with the commit and
-version of a release of this repository:
+Add the workflow from Actions → New workflow (template "PR title", from
+`workflow-templates/pr-title.yml`), or add `.github/workflows/pr-title.yml`
+by hand, pinned to a full commit SHA on `main` of this repository (it has no
+releases); Dependabot (`github-actions` ecosystem) bumps the pin:
 
 ```yaml
 ---
@@ -53,11 +55,14 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Check PR title
-        uses: elixir-cloud-aai/.github/actions/pr-title@<commit SHA> # vX.Y.Z
+        uses: elixir-cloud-aai/.github/actions/pr-title@<commit SHA on main> # pr-title
 ```
 
 Then require the check `PR title` in the repository's ruleset, next to
 `CI passed`, once it has reported on a pull request.
+
+Dependabot doesn't update `workflow-templates/`: when this action changes,
+bump the pin in `workflow-templates/pr-title.yml` by hand.
 
 ## Inputs
 

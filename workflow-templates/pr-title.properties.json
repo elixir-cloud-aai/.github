@@ -1,0 +1,6 @@
+{
+  "name": "PR title",
+  "description": "Checks that pull request titles follow the organisation's convention (Conventional Commits, at most 50 characters).",
+  "iconName": "octicon git-pull-request",
+  "categories": ["Automation"]
+}
