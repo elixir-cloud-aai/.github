@@ -8,7 +8,7 @@ description: >-
   `allow-skipped`.
 inputs:
   needs:
-    description: The results of the needed jobs, as `${{ toJSON(needs) }}`.
+    description: The results of the needed jobs, as `toJSON(needs)`.
     required: true
   allow-skipped:
     description: IDs of the jobs that may be skipped, separated by whitespace.
