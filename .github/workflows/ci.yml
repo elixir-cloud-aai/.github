@@ -3,10 +3,9 @@
 # Markdown, YAML (issue forms, workflows, the Dependabot configuration and
 # the composite actions in `actions/`) and the workflows (actionlint), and
 # test the composite actions (each action adds its tests to the `test` job).
-# The gate
-# `passed` ("CI passed") is the only required check. No `paths:` filters, so
-# that the gate always reports; skip jobs with `if:` instead (and allow the
-# skip in the gate)
+# The gate `passed` ("CI passed") is the only required check. No `paths:`
+# filters, so that the gate always reports; skip jobs with `if:` instead (and
+# allow the skip in the gate)
 
 name: CI
 on:
@@ -63,18 +62,24 @@ jobs:
       # pr-title: the rules, on good and bad titles
       - name: Test PR title rules
         run: bash tests/pr-title/test.sh
-      # pr-title: the action itself, with its inputs and outcome
+      # pr-title: the action itself. Passes only if `types` (one per line)
+      # reaches the script
       - name: Check a good PR title
         uses: ./actions/pr-title
         with:
-          title: "feat(api)!: add pagination"
+          title: "perf(api)!: add pagination"
+          types: |
+            fix
+            perf
+      # Valid but for `max-length`, so it fails only if that input reaches
+      # the script
       - name: Check a bad PR title
         id: bad-title
         continue-on-error: true
         uses: ./actions/pr-title
         with:
           title: "feat(api): add pagination"
-          types: fix
+          max-length: "10"
       - name: Expect the bad PR title to fail
         env:
           OUTCOME: ${{ steps.bad-title.outcome }}

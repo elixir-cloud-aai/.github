@@ -1,14 +1,19 @@
 # PR title
 
 Checks that a pull request title follows the organisation's convention, as
-the title becomes the commit message of the squash merge:
+the title becomes the commit message of the squash merge (GitHub appends the
+pull request number, as in `(#123)`, which doesn't count):
 
 - the format `<type>[(<scope>)][!]: <description>`
   ([Conventional Commits](https://www.conventionalcommits.org/)), with one of
   the allowed types;
 - at most 50 characters **in total**, scope included;
-- a description that doesn't start with an uppercase letter;
-- no trailing period or whitespace, and only one line.
+- a description that doesn't start with a capitalised word (`Add`), while
+  acronyms and names (`API`, `OpenAPI`) are fine;
+- no trailing period, ellipsis or whitespace, and only one line.
+
+Lengths count Unicode code points, so a decomposed accent counts twice. The
+action is for `pull_request` events; an empty title fails.
 
 The check reports every rule that failed, with the title's length. It is a
 plain script: no token, no third-party action.

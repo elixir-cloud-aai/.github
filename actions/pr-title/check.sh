@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Checks a pull request title against the organisation's convention:
-# `<type>[(<scope>)][!]: <description>` (Conventional Commits), at most
-# PR_TITLE_MAX_LENGTH characters in total, a description that doesn't start
-# with an uppercase letter and has no trailing period. Reads the title, the
-# allowed types (separated by whitespace) and the maximum length from the
-# environment (PR_TITLE, PR_TITLE_TYPES, PR_TITLE_MAX_LENGTH), never from
-# arguments or interpolated code. Reports every failed rule, as a GitHub
-# Actions error annotation, and exits with 1 if any rule failed
+# `<type>[(<scope>)][!]: <description>` (Conventional Commits) with an allowed
+# type, at most PR_TITLE_MAX_LENGTH characters in total, a description that
+# doesn't start with a capitalised word (`Add`; `API` and `OpenAPI` are fine)
+# and no trailing period or whitespace, on one line. Reads the title, the
+# allowed types (separated by whitespace, newlines included) and the maximum
+# length from the environment (PR_TITLE, PR_TITLE_TYPES,
+# PR_TITLE_MAX_LENGTH), never from arguments or interpolated code. Reports
+# every failed rule, as a GitHub Actions error annotation, and exits with 1
+# if any rule failed. Lengths count Unicode code points
 set -euo pipefail
 
 # Count characters, not bytes
@@ -14,7 +16,7 @@ export LC_ALL=C.UTF-8
 
 title="${PR_TITLE-}"
 max_length="${PR_TITLE_MAX_LENGTH:-50}"
-read -r -a types <<< "${PR_TITLE_TYPES-}"
+read -r -d '' -a types <<< "${PR_TITLE_TYPES-}" || true
 
 if ! [[ "${max_length}" =~ ^[1-9][0-9]*$ ]]; then
   echo "::error title=PR title::Invalid maximum length: '${max_length}'"
@@ -22,6 +24,10 @@ if ! [[ "${max_length}" =~ ^[1-9][0-9]*$ ]]; then
 fi
 if ((${#types[@]} == 0)); then
   echo "::error title=PR title::No allowed types given"
+  exit 1
+fi
+if [[ -z "${title}" ]]; then
+  echo "::error title=PR title::The title is empty (the action checks pull_request events)"
   exit 1
 fi
 
@@ -55,17 +61,20 @@ if [[ "${title}" =~ ${format} ]]; then
   if [[ "${allowed}" != true ]]; then
     errors+=("Type '${type}' is not allowed; use one of: ${types[*]}")
   fi
-  if [[ "${description}" =~ ^[[:upper:]] ]]; then
-    errors+=("The description starts with an uppercase letter")
-  fi
-  if [[ "${description}" =~ [[:space:]]$ ]]; then
-    errors+=("The title ends with whitespace")
+  # A capitalised word (`Add`), not an acronym or name (`API`, `OpenAPI`)
+  if [[ "${description}" =~ ^[[:upper:]][[:lower:]]*([^[:alpha:]]|$) ]]; then
+    errors+=("The description starts with a capitalised word; use lowercase")
   fi
 else
   errors+=("Not in the format '<type>[(<scope>)][!]: <description>' (Conventional Commits)")
 fi
 
-if [[ "${title}" == *. ]]; then
+# Also a no-break space
+if [[ "${title}" =~ ([[:space:]]|$' ')$ ]]; then
+  errors+=("The title ends with whitespace")
+fi
+# Also an ellipsis
+if [[ "${title}" == *. || "${title}" == *$'…' ]]; then
   errors+=("The title ends with a period")
 fi
 
