@@ -2,7 +2,7 @@
 # Checks a pull request title against the organisation's convention:
 # `<type>[(<scope>)][!]: <description>` (Conventional Commits) with an allowed
 # type, at most PR_TITLE_MAX_LENGTH characters in total, a description that
-# doesn't start with a capitalised word (`Add`; `API` and `OpenAPI` are fine)
+# doesn't start with a capitalised word (`Add`; `API`, `OpenAPI`, `S3` are fine)
 # and no trailing period or whitespace, on one line. Reads the title, the
 # allowed types (separated by whitespace, newlines included) and the maximum
 # length from the environment (PR_TITLE, PR_TITLE_TYPES,
@@ -19,7 +19,7 @@ max_length="${PR_TITLE_MAX_LENGTH:-50}"
 read -r -d '' -a types <<< "${PR_TITLE_TYPES-}" || true
 
 if ! [[ "${max_length}" =~ ^[1-9][0-9]*$ ]]; then
-  echo "::error title=PR title::Invalid maximum length: '${max_length}'"
+  echo "::error title=PR title::Invalid maximum length (a positive integer is required)"
   exit 1
 fi
 if ((${#types[@]} == 0)); then
@@ -45,9 +45,13 @@ if ((length > max_length)); then
   errors+=("Too long: ${length} characters, at most ${max_length} allowed")
 fi
 
+# Whitespace that [[:space:]] misses: no-break, figure, narrow no-break and
+# zero-width spaces
+invisible=$'\u00a0\u2007\u202f\u200b'
+
 # Type, optional scope (no spaces or parentheses), optional `!`, then `: `
-# and a description that starts with a non-space character
-format='^([a-z]+)(\([^()[:space:]]+\))?(!)?: ([^[:space:]].*)$'
+# and a description that starts with a visible character
+format="^([a-z]+)(\\([^()[:space:]]+\\))?(!)?: ([^[:space:]${invisible}].*)\$"
 if [[ "${title}" =~ ${format} ]]; then
   type="${BASH_REMATCH[1]}"
   description="${BASH_REMATCH[4]}"
@@ -61,20 +65,20 @@ if [[ "${title}" =~ ${format} ]]; then
   if [[ "${allowed}" != true ]]; then
     errors+=("Type '${type}' is not allowed; use one of: ${types[*]}")
   fi
-  # A capitalised word (`Add`), not an acronym or name (`API`, `OpenAPI`)
-  if [[ "${description}" =~ ^[[:upper:]][[:lower:]]*([^[:alpha:]]|$) ]]; then
+  # A capitalised word (`Add`), not an acronym or name (`API`, `OpenAPI`,
+  # `S3`, `C++`)
+  if [[ "${description}" =~ ^[[:upper:]][[:lower:]]*([[:space:]]|$) ]]; then
     errors+=("The description starts with a capitalised word; use lowercase")
   fi
 else
   errors+=("Not in the format '<type>[(<scope>)][!]: <description>' (Conventional Commits)")
 fi
 
-# Also a no-break space
-if [[ "${title}" =~ ([[:space:]]|$' ')$ ]]; then
+if [[ "${title}" =~ [[:space:]${invisible}]$ ]]; then
   errors+=("The title ends with whitespace")
 fi
 # Also an ellipsis
-if [[ "${title}" == *. || "${title}" == *$'…' ]]; then
+if [[ "${title}" == *. || "${title}" == *$'\u2026' ]]; then
   errors+=("The title ends with a period")
 fi
 

@@ -52,6 +52,11 @@ expect pass "fix: API docs"
 expect pass "fix!: OpenAPI auth removal"
 expect pass "docs: MkDocs Material theme"
 expect pass "fix: 404 on empty lists"
+expect pass "fix: S3 upload retries"
+expect pass "feat: K8s manifests"
+expect pass "fix: C++ bindings"
+# Single capitalised names can't be told apart from a capitalised verb
+expect fail "build: Docker image tags" "starts with a capitalised word"
 
 # Length: 50 characters pass, 51 fail; the scope counts too
 expect pass "$(pad "feat(scope): add " 50)"
@@ -95,7 +100,10 @@ expect fail "" "The title is empty"
 # Leading or trailing whitespace
 expect fail " fix: handle empty input" "Not in the format"
 expect fail "fix: handle empty input " "ends with whitespace"
-expect fail $'fix: handle empty input ' "ends with whitespace"
+expect fail $'fix: handle empty input\u00a0' "ends with whitespace"
+expect fail $'fix: handle empty input\u202f' "ends with whitespace"
+expect fail $'fix: handle empty input\u200b' "ends with whitespace"
+expect fail $'fix: \u00a0Add x' "Not in the format"
 
 # Several rules at once are all reported (51 characters)
 several="feature: Add a very long title that goes on and on."
@@ -105,8 +113,9 @@ expect fail "${several}" "starts with a capitalised word"
 expect fail "${several}" "ends with a period"
 
 # Invalid inputs
-expect fail "fix: a" "Invalid maximum length: 'abc'" abc
-expect fail "fix: a" "Invalid maximum length: '0'" 0
+expect fail "fix: a" "Invalid maximum length" abc
+expect fail "fix: a" "Invalid maximum length" 0
+expect fail "fix: a" "Invalid maximum length" $'1\n::warning::x'
 expect fail "fix: a" "No allowed types given" 50 " "
 
 # More than one line, without injecting a workflow command

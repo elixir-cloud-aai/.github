@@ -4,7 +4,8 @@
 name: PR title
 description: >-
   Check that a pull request title follows the organisation's convention:
-  Conventional Commits, at most 50 characters in total, no trailing period.
+  Conventional Commits with an allowed type, at most `max-length` characters
+  in total (default 50), no trailing period.
 inputs:
   title:
     description: The title to check; by default, that of the pull request.

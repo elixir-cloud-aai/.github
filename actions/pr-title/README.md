@@ -9,7 +9,9 @@ pull request number, as in `(#123)`, which doesn't count):
   the allowed types;
 - at most 50 characters **in total**, scope included;
 - a description that doesn't start with a capitalised word (`Add`), while
-  acronyms and names (`API`, `OpenAPI`) are fine;
+  acronyms and names with more capitals or digits (`API`, `OpenAPI`, `S3`)
+  are fine; a plain capitalised name (`Docker`) can't be told from a verb
+  and fails;
 - no trailing period, ellipsis or whitespace, and only one line.
 
 Lengths count Unicode code points, so a decomposed accent counts twice. The
