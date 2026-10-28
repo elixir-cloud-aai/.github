@@ -1,0 +1,30 @@
+---
+# Checks that pull request titles follow the organisation's convention, as
+# they become the commit messages of squash merges. A workflow of its own,
+# so that editing a title reruns only this check, not CI. The action is
+# pinned to a commit on `main` of elixir-cloud-aai/.github; Dependabot
+# (`github-actions` ecosystem) bumps the pin
+name: PR title
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions: {}
+
+# A newer run (e.g. after the title was edited again) cancels older ones, so
+# that the check reports on the current title
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  title:
+    name: PR title
+    # Dependabot's titles often exceed 50 characters; a skipped job counts
+    # as passed for required checks
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check PR title
+        uses: elixir-cloud-aai/.github/actions/pr-title@397a1c8a82d72af2a3a5908c546a9ad1101de32d # pr-title
