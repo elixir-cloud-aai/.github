@@ -17,9 +17,10 @@ fi
 allowed_json="$(jq -cn '$ARGS.positional' --args "${allowed[@]}")"
 offending="$(jq -r --argjson allowed "${allowed_json}" '
   to_entries[]
-  | select(.value.result != "success")
-  | select(.value.result != "skipped" or (.key | IN($allowed[]) | not))
-  | "\(.key): \(.value.result)"' <<< "${needs}")"
+  | select((.value | type) != "object" or .value.result != "success")
+  | select((.value | type) != "object" or .value.result != "skipped"
+      or (.key | IN($allowed[]) | not))
+  | "\(.key): \(if (.value | type) == "object" then .value.result else "malformed" end)"' <<< "${needs}")"
 
 if [[ -n "${offending}" ]]; then
   # Strip characters that could start a workflow command

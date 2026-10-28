@@ -44,6 +44,23 @@ expect fail "" "" "No job results"
 expect fail "null" "" "No job results"
 # Job IDs can't inject workflow commands
 expect fail "{\"::warning::x\":{\"result\":\"failure\"}}" "" "warningx: failure"
+# Malformed entries fail with the gate's own message
+expect fail "{\"a\":\"x\"}" "a" "a: malformed"
+expect fail "{\"a\":{}}" "" "a: null"
+
+# The step summary lists the offending jobs
+summary="$(mktemp)"
+trap 'rm -f "${summary}"' EXIT
+if GATE_NEEDS="{\"test\":{\"result\":\"failure\"}}" GATE_ALLOW_SKIPPED="" \
+  GITHUB_STEP_SUMMARY="${summary}" bash "${check}" >/dev/null 2>&1; then
+  echo "NOT OK: expected fail with a step summary"
+  failures=$((failures + 1))
+elif ! grep -qx -- "- test: failure" "${summary}"; then
+  echo "NOT OK: step summary lacks the failed job: $(cat "${summary}")"
+  failures=$((failures + 1))
+else
+  echo "ok: step summary"
+fi
 
 if ((failures > 0)); then
   echo "${failures} test(s) failed"
