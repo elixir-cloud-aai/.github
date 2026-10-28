@@ -1,0 +1,20 @@
+---
+version: 2
+updates:
+  # Actions in the workflows (`/`) and in every composite action
+  # (`/actions/*`, so that new actions need no entry of their own)
+  - package-ecosystem: github-actions
+    directories: ["/", "/actions/*"]
+    schedule:
+      interval: monthly
+    groups:
+      github-actions:
+        patterns: ["*"]
+  # Hook revisions in `.pre-commit-config.yaml`
+  - package-ecosystem: pre-commit
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      pre-commit:
+        patterns: ["*"]
