@@ -25,6 +25,8 @@ describes how they are versioned and released.
 - [`gate`](actions/gate/README.md): checks the results of the jobs a CI
   gate needs.
 - [`pr-title`](actions/pr-title/README.md): checks pull request titles.
+- [`scan-image`](actions/scan-image/README.md): scans Docker images with
+  Trivy.
 
 ## Development
 
