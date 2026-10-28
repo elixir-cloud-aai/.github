@@ -53,7 +53,7 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -86,6 +86,43 @@ jobs:
         run: |
           if [[ "${OUTCOME}" != failure ]]; then
             echo "::error::Expected the check of the bad title to fail, got ${OUTCOME}"
+            exit 1
+          fi
+      # scan-image: a clean image passes and yields the full report; an image
+      # with fixable critical and high findings fails. No upload to code
+      # scanning (the job has no `security-events: write`)
+      - name: Prepare images to scan
+        run: |
+          printf 'vulnerabilities: []\n' > .trivyignore.yaml
+          printf 'FROM scratch\nCOPY .trivyignore.yaml /\n' \
+            | docker build --tag scan-image-test:clean --file - .
+          docker pull alpine:3.10.0
+      - name: Scan a clean image
+        uses: ./actions/scan-image
+        with:
+          image: scan-image-test:clean
+          category: test-clean
+          upload: "false"
+          report: "true"
+      - name: Expect the full report
+        run: |
+          jq -e '.ArtifactName == "scan-image-test:clean"' trivy-report.json
+          test -s trivy-results.sarif
+          test -s trivy-report.txt
+      - name: Scan an image with fixable findings
+        id: bad-image
+        continue-on-error: true
+        uses: ./actions/scan-image
+        with:
+          image: alpine:3.10.0
+          category: test-vulnerable
+          upload: "false"
+      - name: Expect the scan of the vulnerable image to fail
+        env:
+          OUTCOME: ${{ steps.bad-image.outcome }}
+        run: |
+          if [[ "${OUTCOME}" != failure ]]; then
+            echo "::error::Expected the scan of the vulnerable image to fail, got ${OUTCOME}"
             exit 1
           fi
 

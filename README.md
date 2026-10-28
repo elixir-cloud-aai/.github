@@ -23,6 +23,8 @@ other repositories share and pin by commit. [RELEASING.md](RELEASING.md)
 describes how they are versioned and released.
 
 - [`pr-title`](actions/pr-title/README.md): checks pull request titles.
+- [`scan-image`](actions/scan-image/README.md): scans Docker images with
+  Trivy.
 
 ## Development
 
