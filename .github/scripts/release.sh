@@ -32,13 +32,13 @@ die() {
 # exit in the pipeline, so that `git tag` never gets SIGPIPE
 last_release() {
   git tag --merged "$1" --list 'v*' --sort=-v:refname \
-    | awk -v pattern="${tag_pattern}" '$0 ~ pattern && !found { print; found = 1 }'
+    | TAG_PATTERN="${tag_pattern}" awk '$0 ~ ENVIRON["TAG_PATTERN"] && !found { print; found = 1 }'
 }
 
 # Whether a release tag points to <commit> or one of its descendants
 released() {
   git tag --contains "$1" --list 'v*' \
-    | awk -v pattern="${tag_pattern}" '$0 ~ pattern { found = 1 } END { exit !found }'
+    | TAG_PATTERN="${tag_pattern}" awk '$0 ~ ENVIRON["TAG_PATTERN"] { found = 1 } END { exit !found }'
 }
 
 # The range of commits from <previous release> (exclusive) to <commit>

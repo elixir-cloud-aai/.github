@@ -105,6 +105,8 @@ expect_plan "${footer}" ""
 # Tags other than vX.Y.Z don't count
 git tag v9 "${featish}"
 git tag v10.0.0-rc1 "${featish}"
+# The dots are literal
+git tag v3x0x0 "${featish}"
 expect_plan "${featish}" "tag=v2.0.1 previous=v2.0.0"
 # Only release tags on ancestors count: a stray tag elsewhere (e.g. on a
 # side branch) neither blocks nor bumps releases of `main`
