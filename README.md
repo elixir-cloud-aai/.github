@@ -33,4 +33,6 @@ you push:
 ```sh
 pre-commit install
 pre-commit run --all-files
+# The whole checkout, as in CI (also untracked and ignored files)
+pre-commit run --all-files --hook-stage manual gitleaks-all
 ```
