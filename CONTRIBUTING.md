@@ -57,11 +57,13 @@ squash merge:
 ```
 
 - The subject line has at most 50 characters.
-- The description starts with a verb in the imperative mood (e.g., `add`,
-  `fix`) and has no trailing period.
+- The description starts with a lowercase verb in the imperative mood
+  (e.g., `add`, `fix`) and has no trailing period.
 - `!` (and a `BREAKING CHANGE:` footer in the body) marks breaking changes.
-- Common types are `feat`, `fix`, `perf`, `refactor`, `style`, `build`, `ci`,
-  `docs`, `test`, `chore` and `revert`.
+- The type is one of `feat`, `fix`, `perf`, `refactor`, `style`, `build`,
+  `ci`, `docs`, `test`, `chore` and `revert`.
+- Where a repository has the `PR title` check, it enforces these rules for
+  pull request titles.
 
 ## Repository specifics
 

@@ -18,21 +18,26 @@ that all repositories follow the same rules.
 See GitHub's documentation on
 [default community health files](https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions/creating-a-default-community-health-file).
 
-The repository will also hold composite actions, in `actions/<name>/`, that
-the other repositories share and pin by commit. [RELEASING.md](RELEASING.md)
+The repository also holds composite actions, in `actions/<name>/`, that the
+other repositories share and pin by commit. [RELEASING.md](RELEASING.md)
 describes how they are versioned and released.
+
+- [`pr-title`](actions/pr-title/README.md): checks pull request titles.
 
 ## Development
 
 CI (`.github/workflows/ci.yml`) runs the [pre-commit](https://pre-commit.com)
 hooks of `.pre-commit-config.yaml`: YAML syntax and GitHub's schemas (issue
 forms, workflows, actions, Dependabot), Markdown style (markdownlint),
-secrets (gitleaks) and the workflows (actionlint). Run them locally before
-you push:
+secrets (gitleaks), shell scripts (shellcheck) and the workflows
+(actionlint). Its `test` job runs the tests of the composite actions
+(`tests/<action>/test.sh`) and the actions themselves. Run them locally
+before you push:
 
 ```sh
 pre-commit install
 pre-commit run --all-files
 # The whole checkout, as in CI (also untracked and ignored files)
 pre-commit run --all-files --hook-stage manual gitleaks-all
+bash tests/pr-title/test.sh
 ```
