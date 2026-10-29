@@ -2,8 +2,8 @@
 # Checks that pull request titles follow the organisation's convention, as
 # they become the commit messages of squash merges. A workflow of its own,
 # so that editing a title reruns only this check, not CI. The action is
-# pinned to a commit on `main` of elixir-cloud-aai/.github; Dependabot
-# (`github-actions` ecosystem) bumps the pin
+# pinned to a release of elixir-cloud-aai/.github; Dependabot
+# (`github-actions` ecosystem) bumps the pin to new releases
 name: PR title
 on:
   pull_request:
@@ -27,4 +27,4 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Check PR title
-        uses: elixir-cloud-aai/.github/actions/pr-title@397a1c8a82d72af2a3a5908c546a9ad1101de32d # pr-title
+        uses: elixir-cloud-aai/.github/actions/pr-title@743e82d290a53768454999e413756a924e383259 # v1.0.0
