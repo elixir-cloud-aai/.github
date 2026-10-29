@@ -19,7 +19,11 @@ the job `security-events: write` to upload to code scanning.
 
 ## Usage
 
-With the commit and version of a release of this repository:
+Pin the commit and version of a
+[release](https://github.com/elixir-cloud-aai/.github/releases) of this
+repository; Dependabot (`github-actions` ecosystem) in the calling
+repository bumps the pin to new releases (see
+[RELEASING.md](../../RELEASING.md)):
 
 ```yaml
 permissions:

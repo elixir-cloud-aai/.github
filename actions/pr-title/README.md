@@ -24,8 +24,11 @@ plain script: no token, no third-party action.
 
 Add the workflow from Actions → New workflow (template "PR title", from
 `workflow-templates/pr-title.yml`), or add `.github/workflows/pr-title.yml`
-by hand, pinned to a full commit SHA on `main` of this repository (it has no
-releases); Dependabot (`github-actions` ecosystem) bumps the pin:
+by hand. Pin the commit and version of a
+[release](https://github.com/elixir-cloud-aai/.github/releases) of this
+repository; Dependabot (`github-actions` ecosystem) in the calling
+repository bumps the pin to new releases (see
+[RELEASING.md](../../RELEASING.md)):
 
 ```yaml
 ---
@@ -55,14 +58,15 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Check PR title
-        uses: elixir-cloud-aai/.github/actions/pr-title@<commit SHA on main> # pr-title
+        uses: elixir-cloud-aai/.github/actions/pr-title@<commit SHA> # vX.Y.Z
 ```
 
 Then require the check `PR title` in the repository's ruleset, next to
 `CI passed`, once it has reported on a pull request.
 
-Dependabot doesn't update `workflow-templates/`: when this action changes,
-bump the pin in `workflow-templates/pr-title.yml` by hand.
+Dependabot doesn't update `workflow-templates/` in this repository, so the
+template's pin may be older than the latest release: in the repository that
+adds the workflow, Dependabot bumps it like any other pin.
 
 ## Inputs
 
