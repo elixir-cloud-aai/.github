@@ -18,6 +18,9 @@ that all repositories follow the same rules.
 See GitHub's documentation on
 [default community health files](https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions/creating-a-default-community-health-file).
 
+[`profile/README.md`](profile/README.md) is the organisation's home page on
+GitHub.
+
 The repository also holds composite actions, in `actions/<name>/`, that the
 other repositories share and pin to the commit of a release. Releases are
 automatic; [RELEASING.md](RELEASING.md) describes how they are versioned and
