@@ -1,3 +1,4 @@
+<!-- markdownlint-disable-next-line MD041 -- the logo heads the page -->
 [![ELIXIR On-Cloud][logo]][website]
 
 Standards-based products and architecture patterns for federated analytics in
