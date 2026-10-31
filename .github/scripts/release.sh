@@ -284,7 +284,7 @@ draft() {
 # paragraph, then only the sections of the organisation's format, in order,
 # and nothing unfinished (`TODO`)
 lint() {
-  local tag file line rank last=0 intro=0 title fenced=0 filled=1
+  local tag file line rank last=0 intro=0 title fenced=0 filled=1 stripped
   local -A ranks=(["Breaking changes"]=1 [Features]=2 [Security]=3
     [Fixes]=4 [Documentation]=5 [Maintenance]=6)
   [[ $# -eq 2 ]] || die "Usage: release.sh lint <tag> <file>"
@@ -297,10 +297,11 @@ lint() {
   [[ "${title}" == "# ${tag}" ]] \
     || die "${file} must start with the title '# ${tag}', not '${title}'"
   while IFS= read -r line; do
-    if [[ "${line}" == '```'* ]]; then
+    stripped="${line#"${line%%[![:space:]]*}"}"
+    if [[ "${stripped}" == '```'* || "${stripped}" == '~~~'* ]]; then
       fenced=$((1 - fenced))
-    fi
-    if ((fenced)) || [[ "${line}" == '```'* ]]; then
+      filled=1
+    elif ((fenced)); then
       filled=1
     elif [[ "${line}" == "#"* ]]; then
       ((filled)) || die "${file}: empty section before '${line}'"

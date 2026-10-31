@@ -68,9 +68,8 @@ anything is published, unless:
 The `publish` job (`Publish release`) then waits for approval in the
 `release` environment and creates the GitHub release `vX.Y.Z` with the
 curated notes followed by GitHub's generated notes (`release.sh notes`). A
-failed run can be re-run once the cause is fixed; a re-run after the
-release exists only updates its notes. Release tags are protected by tag
-rulesets (only release tags; created by the maintainer only; immutable),
+failed run can be re-run once the cause is fixed. Release tags are
+protected by tag rulesets (only release tags; created by the maintainer only; immutable),
 and tags and releases are never changed or reused: a release with a mistake
 (e.g., a wrong version) is fixed by the next release. If `Prepare release`
 fails for a reason in the tagged commit (e.g., the notes), nothing is

@@ -300,7 +300,7 @@ expect_lint_error "unknown section" "unknown section '## Commits'" v2.0.1 $'# v2
 expect_lint_error "out of order" "out of order" v2.0.1 $'# v2.0.1\n\nIntro.\n\n## Fixes\n\n- x\n\n## Features\n\n- y'
 expect_lint_error "empty section" "empty section before '## Maintenance'" v2.0.1 $'# v2.0.1\n\nIntro.\n\n## Fixes\n\n## Maintenance\n\n- x'
 expect_lint_error "empty last section" "last section is empty" v2.0.1 $'# v2.0.1\n\nIntro.\n\n## Fixes\n'
-printf '%s\n' '# v2.0.1' '' 'Intro.' '' '## Fixes' '' '- x:' '' '  ```sh' '  # a comment' '  ```' > "${work}/fenced.md"
+printf '%s\n' '# v2.0.1' '' 'Intro.' '' '## Fixes' '' '- x:' '' '```sh' '# a comment' '```' '' '  ~~~' '  ## Features' '  ~~~' > "${work}/fenced.md"
 if bash "${script}" lint v2.0.1 "${work}/fenced.md"; then
   echo "ok: lint: comments in code blocks"
 else
