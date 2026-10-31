@@ -1,5 +1,11 @@
-<!-- markdownlint-disable-next-line MD041 -- the logo heads the page -->
-[![ELIXIR On-Cloud][logo]][website]
+<!-- markdownlint-disable MD033 MD041 -- logo first; <picture> for dark mode -->
+<a href="https://elixir-on.cloud/">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="logo_elixir_on_cloud_night.png">
+    <img src="logo_elixir_on_cloud.png" alt="ELIXIR On-Cloud">
+  </picture>
+</a>
+<!-- markdownlint-enable MD033 MD041 -->
 
 Standards-based products and architecture patterns for federated analytics in
 biomedical research, healthcare and beyond.
@@ -51,7 +57,6 @@ Contact: [cloud-service@elixir-europe.org](mailto:cloud-service@elixir-europe.or
 [foca]: <https://github.com/elixir-cloud-aai/foca>
 [foca-docs]: <https://foca.readthedocs.io/>
 [ga4gh-driver-projects]: <https://www.ga4gh.org/our-community/driver-projects/>
-[logo]: logo_elixir_on_cloud.png
 [protes]: <https://github.com/elixir-cloud-aai/proTES>
 [protes-docs]: <https://protes.readthedocs.io/>
 [security]: <https://github.com/elixir-cloud-aai/.github/blob/main/SECURITY.md>
