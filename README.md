@@ -79,10 +79,6 @@ Contributions are welcome! See the [contributing guidelines](CONTRIBUTING.md)
 and mind our [code of conduct](CODE_OF_CONDUCT.md). Report vulnerabilities as
 described in our [security policy](SECURITY.md).
 
-## License
-
-This repository is licensed under the [Apache License 2.0](LICENSE).
-
 [badge-build-status]: <https://github.com/elixir-cloud-aai/.github/actions/workflows/ci.yml/badge.svg>
 [badge-license]: <https://img.shields.io/badge/license-Apache%202.0-blue.svg>
 [badge-url-build-status]: <https://github.com/elixir-cloud-aai/.github/actions/workflows/ci.yml>
