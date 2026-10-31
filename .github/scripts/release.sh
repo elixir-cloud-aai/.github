@@ -9,7 +9,9 @@
 #     at least the step that the commits since need which changed a file
 #     under `actions/` other than Markdown (`!` or a `BREAKING CHANGE:`
 #     footer: major; `feat`: minor). The first release is v1.0.0. Warns if
-#     no such commit exists. Prints `previous=<last release or empty>`.
+#     no such commit exists. Fails if <commit> is released already, or if
+#     the latest release on RELEASE_BRANCH (by default `origin/main`) is no
+#     ancestor of <commit>. Prints `previous=<last release or empty>`.
 #
 #   release.sh draft <tag> <previous release or ""> <commit>
 #     Prints a draft of the curated notes `docs/releases/<tag>.md` in the
@@ -27,6 +29,8 @@ set -euo pipefail
 
 # The pathspec of the files that callers run: the actions, without docs
 release_paths=(actions ':(exclude,glob)actions/**/*.md')
+# The branch of the releases
+release_branch="${RELEASE_BRANCH:-origin/main}"
 # Release tags: SemVer `vX.Y.Z`, without leading zeros
 tag_pattern='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
 
@@ -68,7 +72,7 @@ parse_message() {
   fi
 }
 
-# The highest release tag on <commit> or its ancestors other than <tag>,
+# The highest release tag other than <tag> on <commit> or its ancestors,
 # or nothing
 previous_release() {
   git tag --merged "$1" --list 'v*' --sort=-v:refname \
@@ -93,7 +97,7 @@ required_level() {
 }
 
 check() {
-  local tag commit previous level major minor patch
+  local tag commit previous latest level major minor patch
   local -a allowed=()
   [[ $# -eq 2 ]] || die "Usage: release.sh check <tag> <commit>"
   tag="$1"
@@ -102,6 +106,15 @@ check() {
   commit="$(git rev-parse --verify --quiet "$2^{commit}")" \
     || die "Not a commit: $2"
   previous="$(previous_release "${commit}" "${tag}")"
+  # Releases only move forward: the latest release on the release branch is
+  # an ancestor (no release from an older commit, which would leave out
+  # later changes)
+  latest="$(previous_release "${release_branch}" "${tag}")"
+  [[ "${latest}" == "${previous}" ]] \
+    || die "${tag} isn't on a descendant of the latest release ${latest}"
+  if [[ -n "${previous}" && "$(git rev-parse "${previous}^{commit}")" == "${commit}" ]]; then
+    die "${commit} is released already as ${previous}"
+  fi
   level="$(required_level "$(commit_range "${previous}" "${commit}")")"
   if [[ -z "${previous}" ]]; then
     allowed=(v1.0.0)
@@ -239,7 +252,7 @@ draft() {
 
   # Intro: the actions whose files (other than docs) changed, and whether
   # the release is a major one
-  printf '# %s\n\n' "${tag}"
+  printf '# %s\n\nTODO: review this draft, then delete this line.\n\n' "${tag}"
   mapfile -t changed < <(git diff --name-only \
     "${previous:-$(git hash-object -t tree /dev/null)}" "${commit}" \
     -- "${release_paths[@]}" | awk -F/ '{ print $2 }' | sort -u)
@@ -271,7 +284,7 @@ draft() {
 # paragraph, then only the sections of the organisation's format, in order,
 # and nothing unfinished (`TODO`)
 lint() {
-  local tag file line rank last=0 intro=0 title
+  local tag file line rank last=0 intro=0 title fenced=0 filled=1
   local -A ranks=(["Breaking changes"]=1 [Features]=2 [Security]=3
     [Fixes]=4 [Documentation]=5 [Maintenance]=6)
   [[ $# -eq 2 ]] || die "Usage: release.sh lint <tag> <file>"
@@ -284,18 +297,26 @@ lint() {
   [[ "${title}" == "# ${tag}" ]] \
     || die "${file} must start with the title '# ${tag}', not '${title}'"
   while IFS= read -r line; do
-    if [[ "${line}" == "#"* ]]; then
+    if [[ "${line}" == '```'* ]]; then
+      fenced=$((1 - fenced))
+    fi
+    if ((fenced)) || [[ "${line}" == '```'* ]]; then
+      filled=1
+    elif [[ "${line}" == "#"* ]]; then
+      ((filled)) || die "${file}: empty section before '${line}'"
       [[ "${line}" == "## "* ]] || die "${file}: only sections (##) after the title: ${line}"
       rank="${ranks[${line#\#\# }]:-}"
       [[ -n "${rank}" ]] \
         || die "${file}: unknown section '${line}' (sections: Breaking changes, Features, Security, Fixes, Documentation, Maintenance)"
       ((rank > last)) || die "${file}: section '${line}' is out of order"
       ((intro)) || die "${file}: the intro paragraph must come before the sections"
-      last="${rank}"
-    elif [[ -n "${line// /}" ]] && ((last == 0)); then
-      intro=1
+      last="${rank}" filled=0
+    elif [[ -n "${line// /}" ]]; then
+      ((last > 0)) || intro=1
+      filled=1
     fi
   done < <(tail -n +2 "${file}")
+  ((filled)) || die "${file}: the last section is empty"
   ((intro)) || die "${file} has no intro paragraph"
 }
 

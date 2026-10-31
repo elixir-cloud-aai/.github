@@ -14,6 +14,8 @@ trap 'rm -rf "${work}"' EXIT
 export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.org
 export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.org
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+# The scratch repository has no remote
+export RELEASE_BRANCH=main
 
 repo="${work}/repo"
 git init -q -b main "${repo}"
@@ -137,7 +139,12 @@ git switch -q main
 expect_check v2.0.2 "${nothing}" "previous=v2.0.1"
 expect_in "warning without changes to the actions" "No commit since v2.0.1 changed the actions" \
   "$(bash "${script}" check v2.0.2 "${nothing}" 2>&1 > /dev/null)"
+# A commit that is released already can't be released again
+expect_check v2.0.2 "${featish}" "error"
 git tag -d v2.0.1 > /dev/null
+# No release from a commit before the latest release (v2.0.0)
+expect_check v1.1.1 "${feat}" "error"
+expect_check v3.0.0 "${bang}" "error"
 if bash "${script}" check v2.0.1 > /dev/null 2>&1; then
   echo "NOT OK: check needs two arguments"
   failures=$((failures + 1))
@@ -201,7 +208,7 @@ expect_not_in "no breaking changes in a patch release" "reaking" "${notes}"
 expect_in "fix with scope security" $'## Security\n\n- Quote job IDs (#18).' "${notes}"
 expect_in "docs" $'## Documentation\n\n- Explain skips (#19).' "${notes}"
 expect_in "maintenance (no PR for #15, deps last)" $'## Maintenance\n\n- Feature flags (#15).\n- Require the new gate (#20).\n- Merge something without a type.\n- Dependency updates (#17).' "${notes}"
-expect_in "draft: title" $'# v2.0.1\n\nRelease v2.0.1' "${notes}"
+expect_in "draft: title and TODO" $'# v2.0.1\n\nTODO: review this draft, then delete this line.\n\nRelease v2.0.1' "${notes}"
 expect_not_in "draft: no generated notes" "## Commits" "${notes}"
 
 # Breaking changes of the actions: section, intro; issues of the same
@@ -254,10 +261,15 @@ fi
 # Curated notes: a draft passes the check
 curated="${work}/v2.0.1.md"
 render draft v2.0.1 v2.0.0 "${plain}" > "${curated}"
+if bash "${script}" lint v2.0.1 "${curated}" 2> /dev/null; then
+  echo "NOT OK: lint should fail on an unreviewed draft"
+  failures=$((failures + 1))
+fi
+sed -i '/^TODO: review/,+1d' "${curated}"
 if bash "${script}" lint v2.0.1 "${curated}"; then
-  echo "ok: lint: a draft"
+  echo "ok: lint: a reviewed draft"
 else
-  echo "NOT OK: lint should pass a draft"
+  echo "NOT OK: lint should pass a reviewed draft"
   failures=$((failures + 1))
 fi
 
@@ -286,6 +298,15 @@ expect_lint_error "no intro" "intro paragraph must come before" v2.0.1 $'# v2.0.
 expect_lint_error "empty" "has no intro paragraph" v2.0.1 $'# v2.0.1\n'
 expect_lint_error "unknown section" "unknown section '## Commits'" v2.0.1 $'# v2.0.1\n\nIntro.\n\n## Commits\n\n- x'
 expect_lint_error "out of order" "out of order" v2.0.1 $'# v2.0.1\n\nIntro.\n\n## Fixes\n\n- x\n\n## Features\n\n- y'
+expect_lint_error "empty section" "empty section before '## Maintenance'" v2.0.1 $'# v2.0.1\n\nIntro.\n\n## Fixes\n\n## Maintenance\n\n- x'
+expect_lint_error "empty last section" "last section is empty" v2.0.1 $'# v2.0.1\n\nIntro.\n\n## Fixes\n'
+printf '%s\n' '# v2.0.1' '' 'Intro.' '' '## Fixes' '' '- x:' '' '  ```sh' '  # a comment' '  ```' > "${work}/fenced.md"
+if bash "${script}" lint v2.0.1 "${work}/fenced.md"; then
+  echo "ok: lint: comments in code blocks"
+else
+  echo "NOT OK: lint should skip code blocks"
+  failures=$((failures + 1))
+fi
 expect_lint_error "subheading" "only sections" v2.0.1 $'# v2.0.1\n\nIntro.\n\n### Details'
 
 # The release body: the curated notes without their title, then the

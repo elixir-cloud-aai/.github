@@ -31,7 +31,8 @@ merged.
 2. **Release preparation:** open a pull request `docs: add notes of vX.Y.Z`
    that adds the curated notes `docs/releases/vX.Y.Z.md` (see [Release
    notes](#release-notes)), and merge it once CI passed. A draft from the
-   commits since the last release:
+   commits since the last release (`vA.B.C`; review it and delete its
+   `TODO` line):
 
    ```sh
    GH_REPO=elixir-cloud-aai/.github bash .github/scripts/release.sh \
@@ -71,7 +72,24 @@ failed run can be re-run once the cause is fixed; a re-run after the
 release exists only updates its notes. Release tags are protected by tag
 rulesets (only release tags; created by the maintainer only; immutable),
 and tags and releases are never changed or reused: a release with a mistake
-(e.g., a wrong version) is fixed by the next release.
+(e.g., a wrong version) is fixed by the next release. If `Prepare release`
+fails for a reason in the tagged commit (e.g., the notes), nothing is
+published, but the tag stays: fix the cause in a pull request and release
+the next version. A re-run of a run whose release exists changes nothing;
+edit the notes by hand if they need more context.
+
+## Repository settings
+
+The maintainer keeps these settings, which the workflow relies on:
+
+- **Environment `release`** with the leads team as required reviewers, so
+  that `Publish release` waits for approval.
+- **Tag rulesets** as in the other repositories: `v*` tags other than
+  `vX.Y.Z` are prohibited; release tags can only be created by the
+  maintainer (bypass), not updated or deleted.
+- **Immutable releases.**
+- A signing key (GPG or SSH) of the maintainer registered on GitHub, so
+  that GitHub verifies the tag signatures.
 
 ## Versions
 

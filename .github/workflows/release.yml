@@ -64,6 +64,12 @@ jobs:
             echo "::error::Tag '${TAG}' has no signature verified by GitHub (git tag -s)"
             exit 1
           fi
+          # The tag still points to the commit of the event (e.g., on a
+          # re-run)
+          if [[ "$(git rev-parse "refs/tags/${TAG}^{commit}")" != "${GITHUB_SHA}" ]]; then
+            echo "::error::Tag '${TAG}' no longer points to ${GITHUB_SHA}"
+            exit 1
+          fi
           if ! git merge-base --is-ancestor HEAD origin/main; then
             echo "::error::Release commit is not on 'main'"
             exit 1
@@ -113,8 +119,8 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.sha }}
           persist-credentials: false
-      # A re-run after the release was created only updates its notes,
-      # which stay editable on immutable releases
+      # A re-run after the release was created changes nothing (edit the
+      # notes by hand if needed)
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -128,7 +134,7 @@ jobs:
             "docs/releases/${TAG}.md" > "${notes}"
           cat "${notes}" >> "${GITHUB_STEP_SUMMARY}"
           if gh release view "${TAG}" > /dev/null 2>&1; then
-            gh release edit "${TAG}" --title "${TAG}" --notes-file "${notes}"
+            echo "::notice::The release ${TAG} exists already"
           else
             gh release create "${TAG}" --verify-tag --title "${TAG}" \
               --notes-file "${notes}"
