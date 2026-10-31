@@ -35,6 +35,7 @@ merged.
    `TODO` line):
 
    ```sh
+   mkdir -p docs/releases
    GH_REPO=elixir-cloud-aai/.github bash .github/scripts/release.sh \
      draft vX.Y.Z vA.B.C origin/main > docs/releases/vX.Y.Z.md
    ```
@@ -59,7 +60,8 @@ anything is published, unless:
 - its commit is on `main`, and CI passed for the push of that commit;
 - the version is the next one after the last release
   (`.github/scripts/release.sh check`): one major, minor or patch step
-  after the highest `vX.Y.Z` tag on an ancestor of the commit, and at
+  after the highest `vX.Y.Z` tag with a published release on an ancestor
+  of the commit, and at
   least the step that the commits since need which changed the actions; a
   release without such a commit only gets a warning;
 - `docs/releases/vX.Y.Z.md` exists in the tagged commit and is finished

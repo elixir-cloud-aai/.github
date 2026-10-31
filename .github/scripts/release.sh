@@ -11,7 +11,8 @@
 #     footer: major; `feat`: minor). The first release is v1.0.0. Warns if
 #     no such commit exists. Fails if <commit> is released already, or if
 #     the latest release on RELEASE_BRANCH (by default `origin/main`) is no
-#     ancestor of <commit>. Prints `previous=<last release or empty>`.
+#     ancestor of <commit>. With PUBLISHED (a file of tags, one per
+#     line), only tags with a published release count as releases. Prints `previous=<last release or empty>`.
 #
 #   release.sh draft <tag> <previous release or ""> <commit>
 #     Prints a draft of the curated notes `docs/releases/<tag>.md` in the
@@ -74,9 +75,18 @@ parse_message() {
 
 # The highest release tag other than <tag> on <commit> or its ancestors,
 # or nothing
+# (only tags listed in the file PUBLISHED, one per line, if set: tags whose
+# release failed don't count)
 previous_release() {
   git tag --merged "$1" --list 'v*' --sort=-v:refname \
-    | TAG_PATTERN="${tag_pattern}" TAG="$2" awk '$0 ~ ENVIRON["TAG_PATTERN"] && $0 != ENVIRON["TAG"] && !found { print; found = 1 }'
+    | TAG_PATTERN="${tag_pattern}" TAG="$2" PUBLISHED="${PUBLISHED:-}" awk '
+      BEGIN {
+        if (ENVIRON["PUBLISHED"] != "") {
+          filter = 1
+          while ((getline t < ENVIRON["PUBLISHED"]) > 0) ok[t] = 1
+        }
+      }
+      $0 ~ ENVIRON["TAG_PATTERN"] && $0 != ENVIRON["TAG"] && (!filter || ($0 in ok)) && !found { print; found = 1 }'
 }
 
 # The bump that the commits in <range> that changed the actions need: 3
@@ -284,7 +294,7 @@ draft() {
 # paragraph, then only the sections of the organisation's format, in order,
 # and nothing unfinished (`TODO`)
 lint() {
-  local tag file line rank last=0 intro=0 title fenced=0 filled=1 stripped
+  local tag file line rank last=0 intro=0 title fence="" filled=1 stripped
   local -A ranks=(["Breaking changes"]=1 [Features]=2 [Security]=3
     [Fixes]=4 [Documentation]=5 [Maintenance]=6)
   [[ $# -eq 2 ]] || die "Usage: release.sh lint <tag> <file>"
@@ -298,12 +308,14 @@ lint() {
     || die "${file} must start with the title '# ${tag}', not '${title}'"
   while IFS= read -r line; do
     stripped="${line#"${line%%[![:space:]]*}"}"
-    if [[ "${stripped}" == '```'* || "${stripped}" == '~~~'* ]]; then
-      fenced=$((1 - fenced))
+    if [[ -z "${fence}" && ( "${stripped}" == '```'* || "${stripped}" == '~~~'* ) ]]; then
+      fence="${stripped:0:3}"
       filled=1
-    elif ((fenced)); then
+    elif [[ -n "${fence}" ]]; then
+      [[ "${stripped}" != "${fence}"* ]] || fence=""
       filled=1
-    elif [[ "${line}" == "#"* ]]; then
+    elif [[ "${stripped}" == "#"* ]]; then
+      line="${stripped}"
       ((filled)) || die "${file}: empty section before '${line}'"
       [[ "${line}" == "## "* ]] || die "${file}: only sections (##) after the title: ${line}"
       rank="${ranks[${line#\#\# }]:-}"
@@ -317,6 +329,7 @@ lint() {
       filled=1
     fi
   done < <(tail -n +2 "${file}")
+  [[ -z "${fence}" ]] || die "${file}: a code block (${fence}) is not closed"
   ((filled)) || die "${file}: the last section is empty"
   ((intro)) || die "${file} has no intro paragraph"
 }

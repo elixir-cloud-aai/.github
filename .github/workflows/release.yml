@@ -75,12 +75,20 @@ jobs:
             exit 1
           fi
           echo "sha=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
+      # Only tags with a published release count as releases (not those of
+      # failed runs)
       - name: Check release version
         id: version
         env:
           TAG: ${{ github.ref_name }}
           SHA: ${{ steps.tag.outputs.sha }}
-        run: bash .github/scripts/release.sh check "${TAG}" "${SHA}" >> "${GITHUB_OUTPUT}"
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          export PUBLISHED="${RUNNER_TEMP}/published"
+          gh release list --limit 1000 --exclude-drafts --json tagName \
+            --jq '.[].tagName' > "${PUBLISHED}"
+          bash .github/scripts/release.sh check "${TAG}" "${SHA}" >> "${GITHUB_OUTPUT}"
       # Curated notes are published as written, so they must be finished
       # and in the organisation's format
       - name: Check release notes
@@ -97,7 +105,7 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           SHA: ${{ steps.tag.outputs.sha }}
         run: |
-          runs="$(gh api "repos/${REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${SHA}&event=push&status=success&per_page=1" \
+          runs="$(gh api "repos/${REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${SHA}&branch=main&event=push&status=success&per_page=1" \
             --jq .total_count)"
           if [[ ! "${runs}" =~ ^[0-9]+$ || "${runs}" -lt 1 ]]; then
             echo "::error::No successful run of the CI workflow (ci.yml) for a push of ${SHA}; once CI passed for it, re-run this workflow"
@@ -120,7 +128,9 @@ jobs:
           ref: ${{ needs.prepare.outputs.sha }}
           persist-credentials: false
       # A re-run after the release was created changes nothing (edit the
-      # notes by hand if needed)
+      # notes by hand if needed). The release becomes the latest only if no
+      # higher version was published meanwhile (e.g., while this run waited
+      # for approval)
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -133,9 +143,16 @@ jobs:
           bash .github/scripts/release.sh notes "${TAG}" "${PREVIOUS}" "${SHA}" \
             "docs/releases/${TAG}.md" > "${notes}"
           cat "${notes}" >> "${GITHUB_STEP_SUMMARY}"
-          if gh release view "${TAG}" > /dev/null 2>&1; then
+          if view="$(gh release view "${TAG}" --json tagName 2>&1)"; then
             echo "::notice::The release ${TAG} exists already"
-          else
-            gh release create "${TAG}" --verify-tag --title "${TAG}" \
-              --notes-file "${notes}"
+            exit 0
+          elif [[ "${view}" != *"release not found"* ]]; then
+            echo "::error::Could not look up the release ${TAG}: ${view}"
+            exit 1
           fi
+          highest="$( (gh release list --limit 1000 --exclude-drafts --json tagName \
+            --jq '.[].tagName'; echo "${TAG}") | sort -V | tail -n 1)"
+          latest=false
+          [[ "${highest}" != "${TAG}" ]] || latest=true
+          gh release create "${TAG}" --verify-tag --title "${TAG}" \
+            --latest="${latest}" --notes-file "${notes}"

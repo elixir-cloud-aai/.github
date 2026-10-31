@@ -139,6 +139,12 @@ git switch -q main
 expect_check v2.0.2 "${nothing}" "previous=v2.0.1"
 expect_in "warning without changes to the actions" "No commit since v2.0.1 changed the actions" \
   "$(bash "${script}" check v2.0.2 "${nothing}" 2>&1 > /dev/null)"
+expect_not_in "no warning with changes to the actions" "No commit since" \
+  "$(bash "${script}" check v2.0.1 "${featish}" 2>&1 > /dev/null)"
+# Tags without a published release (failed runs) don't count
+printf '%s\n' v1.0.0 v1.1.0 > "${work}/published"
+PUBLISHED="${work}/published" expect_check v2.0.0 "${featish}" "previous=v1.1.0"
+PUBLISHED="${work}/published" expect_check v2.0.1 "${featish}" "error"
 # A commit that is released already can't be released again
 expect_check v2.0.2 "${featish}" "error"
 git tag -d v2.0.1 > /dev/null
@@ -307,6 +313,8 @@ else
   echo "NOT OK: lint should skip code blocks"
   failures=$((failures + 1))
 fi
+expect_lint_error "unclosed code block" "is not closed" v2.0.1 $'# v2.0.1\n\nIntro.\n\n## Fixes\n\n```sh\n# x\n~~~'
+expect_lint_error "indented heading" "only sections" v2.0.1 $'# v2.0.1\n\nIntro.\n\n   ### Details'
 expect_lint_error "subheading" "only sections" v2.0.1 $'# v2.0.1\n\nIntro.\n\n### Details'
 
 # The release body: the curated notes without their title, then the
