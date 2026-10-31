@@ -2,21 +2,30 @@
 # Release steps of `.github/workflows/release.yml`; see RELEASING.md. Run
 # from the root of a full clone (all commits and tags):
 #
-#   release.sh plan <commit>
-#     Prints `tag=<vX.Y.Z>` and `previous=<last release or empty>` if
-#     <commit> needs a release, nothing otherwise. A release is needed if a
-#     commit since the last release (the highest `vX.Y.Z` tag on an ancestor
-#     of <commit>) changed a file under `actions/` other than Markdown; the
-#     bump follows the Conventional Commit messages of these commits: `!` or
-#     a `BREAKING CHANGE:` footer gives a major, `feat` a minor, anything else
-#     a patch release. The first release is v1.0.0. Prints nothing if
-#     <commit> is already part of a release on the release branch
-#     (RELEASE_BRANCH, by default `origin/main`); fails if the tag exists.
+#   release.sh check <tag> <commit>
+#     Fails unless <tag> is the next release version for <commit>: a
+#     `vX.Y.Z` that follows the last release (the highest other `vX.Y.Z`
+#     tag on <commit> or its ancestors) by one major, minor or patch step,
+#     at least the step that the commits since need which changed a file
+#     under `actions/` other than Markdown (`!` or a `BREAKING CHANGE:`
+#     footer: major; `feat`: minor). The first release is v1.0.0. Warns if
+#     no such commit exists. Fails if <commit> is released already, or if
+#     the latest release on RELEASE_BRANCH (by default `origin/main`) is no
+#     ancestor of <commit>. With PUBLISHED (a file of tags, one per
+#     line), only tags with a published release count as releases. Prints `previous=<last release or empty>`.
 #
-#   release.sh notes <tag> <previous release or ""> <commit>
-#     Prints the release notes of <tag> in the organisation's format. Calls
-#     `gh` for the issues that each pull request closes and for GitHub's
-#     generated notes; needs GH_REPO (`<owner>/<repo>`) and a token.
+#   release.sh draft <tag> <previous release or ""> <commit>
+#     Prints a draft of the curated notes `docs/releases/<tag>.md` in the
+#     organisation's format, from the commits since <previous>. Calls `gh`
+#     for the issues that each pull request closes; needs GH_REPO
+#     (`<owner>/<repo>`) and a token.
+#
+#   release.sh lint <tag> <file>
+#     Fails unless <file> holds finished curated notes of <tag>.
+#
+#   release.sh notes <tag> <previous release or ""> <commit> <file>
+#     Prints the body of the GitHub release: the curated notes <file> and
+#     GitHub's generated notes (needs GH_REPO and a token).
 set -euo pipefail
 
 # The pathspec of the files that callers run: the actions, without docs
@@ -29,20 +38,6 @@ tag_pattern='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
 die() {
   echo "::error title=Release::$*" >&2
   exit 1
-}
-
-# The highest release tag on <commit> or its ancestors, or nothing. No early
-# exit in the pipeline, so that `git tag` never gets SIGPIPE
-last_release() {
-  git tag --merged "$1" --list 'v*' --sort=-v:refname \
-    | TAG_PATTERN="${tag_pattern}" awk '$0 ~ ENVIRON["TAG_PATTERN"] && !found { print; found = 1 }'
-}
-
-# Whether a release tag on the release branch points to <commit> or one of
-# its descendants (tags elsewhere, e.g. on a work branch, don't count)
-released() {
-  git tag --contains "$1" --merged "${release_branch}" --list 'v*' \
-    | TAG_PATTERN="${tag_pattern}" awk '$0 ~ ENVIRON["TAG_PATTERN"] { found = 1 } END { exit !found }'
 }
 
 # The range of commits from <previous release> (exclusive) to <commit>
@@ -78,20 +73,26 @@ parse_message() {
   fi
 }
 
-plan() {
-  local commit previous level=0 message major minor patch tag
-  local type scope description pr breaking
-  [[ $# -eq 1 ]] || die "Usage: release.sh plan <commit>"
-  commit="$(git rev-parse --verify --quiet "$1^{commit}")" \
-    || die "Not a commit: $1"
-  git rev-parse --verify --quiet "${release_branch}^{commit}" > /dev/null \
-    || die "Release branch not found: ${release_branch}"
-  # Already released, e.g. a run for an older push that waited while a
-  # newer push was released
-  if released "${commit}"; then
-    return 0
-  fi
-  previous="$(last_release "${commit}")"
+# The highest release tag other than <tag> on <commit> or its ancestors,
+# or nothing
+# (only tags listed in the file PUBLISHED, one per line, if set: tags whose
+# release failed don't count)
+previous_release() {
+  git tag --merged "$1" --list 'v*' --sort=-v:refname \
+    | TAG_PATTERN="${tag_pattern}" TAG="$2" PUBLISHED="${PUBLISHED:-}" awk '
+      BEGIN {
+        if (ENVIRON["PUBLISHED"] != "") {
+          filter = 1
+          while ((getline t < ENVIRON["PUBLISHED"]) > 0) ok[t] = 1
+        }
+      }
+      $0 ~ ENVIRON["TAG_PATTERN"] && $0 != ENVIRON["TAG"] && (!filter || ($0 in ok)) && !found { print; found = 1 }'
+}
+
+# The bump that the commits in <range> that changed the actions need: 3
+# (major), 2 (minor), 1 (patch) or 0 (no change to the actions)
+required_level() {
+  local level=0 message type scope description pr breaking
   while IFS= read -r -d '' message; do
     parse_message "${message}"
     if ((breaking)); then
@@ -101,25 +102,44 @@ plan() {
     elif ((level < 1)); then
       level=1
     fi
-  done < <(git log -z --format=%B "$(commit_range "${previous}" "${commit}")" \
-    -- "${release_paths[@]}")
-  ((level > 0)) || return 0
+  done < <(git log -z --format=%B "$1" -- "${release_paths[@]}")
+  echo "${level}"
+}
+
+check() {
+  local tag commit previous latest level major minor patch
+  local -a allowed=()
+  [[ $# -eq 2 ]] || die "Usage: release.sh check <tag> <commit>"
+  tag="$1"
+  [[ "${tag}" =~ ${tag_pattern} ]] \
+    || die "${tag} is no release version (vMAJOR.MINOR.PATCH, no leading zeros)"
+  commit="$(git rev-parse --verify --quiet "$2^{commit}")" \
+    || die "Not a commit: $2"
+  previous="$(previous_release "${commit}" "${tag}")"
+  # Releases only move forward: the latest release on the release branch is
+  # an ancestor (no release from an older commit, which would leave out
+  # later changes)
+  latest="$(previous_release "${release_branch}" "${tag}")"
+  [[ "${latest}" == "${previous}" ]] \
+    || die "${tag} isn't on a descendant of the latest release ${latest}"
+  if [[ -n "${previous}" && "$(git rev-parse "${previous}^{commit}")" == "${commit}" ]]; then
+    die "${commit} is released already as ${previous}"
+  fi
+  level="$(required_level "$(commit_range "${previous}" "${commit}")")"
   if [[ -z "${previous}" ]]; then
-    tag=v1.0.0
+    allowed=(v1.0.0)
   else
     IFS=. read -r major minor patch <<< "${previous#v}"
-    case "${level}" in
-      3) tag="v$((10#${major} + 1)).0.0" ;;
-      2) tag="v${major}.$((10#${minor} + 1)).0" ;;
-      *) tag="v${major}.${minor}.$((10#${patch} + 1))" ;;
-    esac
+    allowed=("v$((10#${major} + 1)).0.0")
+    ((level > 2)) || allowed+=("v${major}.$((10#${minor} + 1)).0")
+    ((level > 1)) || allowed+=("v${major}.${minor}.$((10#${patch} + 1))")
   fi
-  # A tag elsewhere (e.g. set by hand on another branch) would make the
-  # release API publish that tag's commit instead of <commit>
-  if git rev-parse --verify --quiet "refs/tags/${tag}" > /dev/null; then
-    die "The tag ${tag} exists but isn't on an ancestor of ${commit}"
+  if [[ " ${allowed[*]} " != *" ${tag} "* ]]; then
+    die "${tag} doesn't follow ${previous:-no release}: the commits since need one of ${allowed[*]} (see RELEASING.md)"
   fi
-  echo "tag=${tag}"
+  if ((level == 0)); then
+    echo "::warning title=Release::No commit since ${previous:-the start} changed the actions; callers get a Dependabot update without changes" >&2
+  fi
   echo "previous=${previous}"
 }
 
@@ -186,13 +206,13 @@ code_list() {
   echo "${out}"
 }
 
-notes() {
-  local tag previous commit range sha message heading generated issues
+draft() {
+  local tag previous commit range sha message heading issues
   local has_deps=0
   local type scope description pr breaking
   local -A sections=() relevant=()
   local -a deps=() changed=() numbers=()
-  [[ $# -eq 3 ]] || die "Usage: release.sh notes <tag> <previous> <commit>"
+  [[ $# -eq 3 ]] || die "Usage: release.sh draft <tag> <previous> <commit>"
   tag="$1" previous="$2" commit="$3"
   [[ -n "${GH_REPO:-}" ]] || die "GH_REPO is not set"
   range="$(commit_range "${previous}" "${commit}")"
@@ -242,6 +262,7 @@ notes() {
 
   # Intro: the actions whose files (other than docs) changed, and whether
   # the release is a major one
+  printf '# %s\n\nTODO: review this draft, then delete this line.\n\n' "${tag}"
   mapfile -t changed < <(git diff --name-only \
     "${previous:-$(git hash-object -t tree /dev/null)}" "${commit}" \
     -- "${release_paths[@]}" | awk -F/ '{ print $2 }' | sort -u)
@@ -267,14 +288,67 @@ notes() {
       printf '\n## %s\n\n%s' "${heading}" "${sections[${heading}]}"
     fi
   done
+}
 
-  # GitHub's generated notes: the list of pull requests (without its
-  # heading) under `## Commits`, the `**Full Changelog**` line last
+# Checks the curated notes <file> of <tag>: a `# <tag>` title, an intro
+# paragraph, then only the sections of the organisation's format, in order,
+# and nothing unfinished (`TODO`)
+lint() {
+  local tag file line rank last=0 intro=0 title fence="" filled=1 stripped
+  local -A ranks=(["Breaking changes"]=1 [Features]=2 [Security]=3
+    [Fixes]=4 [Documentation]=5 [Maintenance]=6)
+  [[ $# -eq 2 ]] || die "Usage: release.sh lint <tag> <file>"
+  tag="$1" file="$2"
+  [[ -f "${file}" ]] \
+    || die "${file} is missing: add the release notes in a pull request first (see RELEASING.md)"
+  ! grep -n TODO "${file}" >&2 \
+    || die "${file} contains TODO: finish the notes, then tag a new release"
+  title="$(head -n 1 "${file}")"
+  [[ "${title}" == "# ${tag}" ]] \
+    || die "${file} must start with the title '# ${tag}', not '${title}'"
+  while IFS= read -r line; do
+    stripped="${line#"${line%%[![:space:]]*}"}"
+    if [[ -z "${fence}" && ( "${stripped}" == '```'* || "${stripped}" == '~~~'* ) ]]; then
+      fence="${stripped:0:3}"
+      filled=1
+    elif [[ -n "${fence}" ]]; then
+      [[ "${stripped}" != "${fence}"* ]] || fence=""
+      filled=1
+    elif [[ "${stripped}" == "#"* ]]; then
+      line="${stripped}"
+      ((filled)) || die "${file}: empty section before '${line}'"
+      [[ "${line}" == "## "* ]] || die "${file}: only sections (##) after the title: ${line}"
+      rank="${ranks[${line#\#\# }]:-}"
+      [[ -n "${rank}" ]] \
+        || die "${file}: unknown section '${line}' (sections: Breaking changes, Features, Security, Fixes, Documentation, Maintenance)"
+      ((rank > last)) || die "${file}: section '${line}' is out of order"
+      ((intro)) || die "${file}: the intro paragraph must come before the sections"
+      last="${rank}" filled=0
+    elif [[ -n "${line// /}" ]]; then
+      ((last > 0)) || intro=1
+      filled=1
+    fi
+  done < <(tail -n +2 "${file}")
+  [[ -z "${fence}" ]] || die "${file}: a code block (${fence}) is not closed"
+  ((filled)) || die "${file}: the last section is empty"
+  ((intro)) || die "${file} has no intro paragraph"
+}
+
+# Prints the body of the GitHub release of <tag>: the curated notes <file>
+# (checked by `lint`, without their title), then GitHub's generated notes
+# since <previous release>: the list of pull requests (without its heading)
+# under `## Commits`, the `**Full Changelog**` line last
+notes() {
+  local tag previous commit file generated commits changelog
+  [[ $# -eq 4 ]] || die "Usage: release.sh notes <tag> <previous> <commit> <file>"
+  tag="$1" previous="$2" commit="$3" file="$4"
+  [[ -n "${GH_REPO:-}" ]] || die "GH_REPO is not set"
+  lint "${tag}" "${file}"
+  tail -n +2 "${file}" | trim_blank_lines
   local -a args=(-f tag_name="${tag}" -f target_commitish="${commit}")
   [[ -z "${previous}" ]] || args+=(-f previous_tag_name="${previous}")
   generated="$(gh api "repos/${GH_REPO}/releases/generate-notes" \
     "${args[@]}" --jq .body)"
-  local commits changelog
   commits="$(grep -v -e "^## What's Changed" -e '^\*\*Full Changelog\*\*' \
     <<< "${generated}" | trim_blank_lines || true)"
   changelog="$(grep '^\*\*Full Changelog\*\*' <<< "${generated}" || true)"
@@ -287,7 +361,9 @@ notes() {
 }
 
 case "${1:-}" in
-  plan) shift; plan "$@" ;;
+  check) shift; check "$@" ;;
+  draft) shift; draft "$@" ;;
+  lint) shift; lint "$@" ;;
   notes) shift; notes "$@" ;;
-  *) die "Usage: release.sh plan <commit> | notes <tag> <previous> <commit>" ;;
+  *) die "Usage: release.sh check <tag> <commit> | draft <tag> <previous> <commit> | lint <tag> <file> | notes <tag> <previous> <commit> <file>" ;;
 esac

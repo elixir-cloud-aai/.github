@@ -22,9 +22,9 @@ See GitHub's documentation on
 GitHub.
 
 The repository also holds composite actions, in `actions/<name>/`, that the
-other repositories share and pin to the commit of a release. Releases are
-automatic; [RELEASING.md](RELEASING.md) describes how they are versioned and
-released.
+other repositories share and pin to the commit of a release. The maintainer
+releases them from signed version tags; [RELEASING.md](RELEASING.md)
+describes how they are versioned and released.
 
 - [`gate`](actions/gate/README.md): checks the results of the jobs a CI
   gate needs.
