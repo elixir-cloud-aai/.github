@@ -7,51 +7,71 @@ repositories of the organisation, which pin them to the commit of a release:
 - uses: elixir-cloud-aai/.github/actions/<name>@<40-character SHA> # vX.Y.Z
 ```
 
-Releases are automatic: there is nothing to do by hand. Dependabot
-(`github-actions` ecosystem) in each calling repository then proposes to bump
-the pin to the commit of the latest release and updates the `# vX.Y.Z`
-comment. A change here reaches a repository only when that repository merges
-the bump, so every release must be safe to adopt on its own.
+The maintainer releases them from signed version tags, as in the other
+repositories of the organisation. Dependabot (`github-actions` ecosystem) in
+each calling repository then proposes to bump the pin to the commit of the
+latest release and updates the `# vX.Y.Z` comment. A change here reaches a
+repository only when that repository merges the bump, so every release must
+be safe to adopt on its own.
 
-## How releases happen
+## When to release
 
-When CI passes for a push to `main` (a merged pull request), the `Release`
-workflow (`.github/workflows/release.yml`) runs
-`.github/scripts/release.sh`:
+Release when a change to a file under `actions/` other than Markdown, i.e.,
+something that callers run, has been merged. Changes to docs, CI, tests or
+workflow templates alone don't need a release, as every release gives each
+caller a Dependabot pull request; they appear in the notes of the next
+release. A release may cover several merged pull requests. Milestones are
+not used here: a change must be complete and safe for callers when it is
+merged.
 
-1. **Whether to release:** only if a commit since the last release changed a
-   file under `actions/` other than Markdown, i.e., something that callers
-   run. Changes to docs, CI, tests or workflow templates alone don't release,
-   so that callers get no Dependabot pull requests for them; they appear in
-   the notes of the next release.
-2. **The version** follows the [Conventional
-   Commits](https://www.conventionalcommits.org/) messages (the pull request
-   titles) of the commits that changed the actions: a breaking change (`!`
-   after the type or scope, or a `BREAKING CHANGE:` footer) gives a new major
-   version, `feat` a new minor version, any other type a new patch version.
-   The first release is `v1.0.0`.
-3. **The release:** the workflow creates the tag `vX.Y.Z` on the commit and a
-   GitHub release with notes in the organisation's format (below), both via
-   the GitHub API, so that nothing is pushed to `main`.
+## How to release
 
-A run that finds no changes to release, or a commit that is already part of
-a release, ends without creating anything. If the release step fails (e.g.,
-because of a tag ruleset), nothing is created; rerun the failed workflow run
-once the cause is fixed, or leave it to the next push to `main` or to the
-weekly run of the workflow (Mondays), which releases the latest commit of
-`main` that passed CI.
+1. **Pick the version** (see [Versions](#versions)) from the Conventional
+   Commits messages (the pull request titles) since the last release.
+2. **Release preparation:** open a pull request `docs: add notes of vX.Y.Z`
+   that adds the curated notes `docs/releases/vX.Y.Z.md` (see [Release
+   notes](#release-notes)), and merge it once CI passed. A draft from the
+   commits since the last release:
 
-Changes to the actions are released as soon as they are merged; a release
-covers all commits since the last release (several, if several pull requests
-were merged in quick succession). Milestones are therefore not used here: a
-change must be complete and safe for callers when it is merged. The tags are
-lightweight tags that the release API creates, not signed annotated tags.
-Tags and releases are never changed or reused: a release with a mistake
+   ```sh
+   GH_REPO=elixir-cloud-aai/.github bash .github/scripts/release.sh \
+     draft vX.Y.Z vA.B.C origin/main > docs/releases/vX.Y.Z.md
+   ```
+
+3. **Tag** the merged commit on `main` with a signed annotated tag, once CI
+   passed for it, and push the tag:
+
+   ```sh
+   git switch main && git pull --ff-only
+   git tag -s vX.Y.Z -m vX.Y.Z
+   git push origin vX.Y.Z
+   ```
+
+4. **Approve** the `Publish release` job of the `Release` workflow run in
+   the `release` environment.
+
+The `Release` workflow (`.github/workflows/release.yml`) runs for every
+pushed `v*` tag. Its `prepare` job (`Prepare release`) fails, before
+anything is published, unless:
+
+- the tag is annotated and has a signature that GitHub verified;
+- its commit is on `main`, and CI passed for the push of that commit;
+- the version is the next one after the last release
+  (`.github/scripts/release.sh check`): one major, minor or patch step
+  after the highest `vX.Y.Z` tag on an ancestor of the commit, and at
+  least the step that the commits since need which changed the actions; a
+  release without such a commit only gets a warning;
+- `docs/releases/vX.Y.Z.md` exists in the tagged commit and is finished
+  and in the format below (`release.sh lint`).
+
+The `publish` job (`Publish release`) then waits for approval in the
+`release` environment and creates the GitHub release `vX.Y.Z` with the
+curated notes followed by GitHub's generated notes (`release.sh notes`). A
+failed run can be re-run once the cause is fixed; a re-run after the
+release exists only updates its notes. Release tags are protected by tag
+rulesets (only release tags; created by the maintainer only; immutable),
+and tags and releases are never changed or reused: a release with a mistake
 (e.g., a wrong version) is fixed by the next release.
-Don't create `vX.Y.Z` tags or releases by hand: the workflow computes the
-next version from the release tags on `main` (pull requests are
-squash-merged, so tags on other branches never become part of `main`), and
-fails if the next version exists as a tag elsewhere.
 
 ## Versions
 
@@ -71,24 +91,24 @@ fails if the next version exists as a tag elsewhere.
 
 ## Release notes
 
-The workflow writes the notes from the commits since the last release:
+The curated notes `docs/releases/vX.Y.Z.md` start with the title
+`# vX.Y.Z` (which the release leaves out), followed by:
 
 1. An intro paragraph that names the changed actions and, for a major
-   release, points to the breaking changes.
+   release, points to the breaking changes and says what callers have to
+   change.
 2. Grouped sections, empty ones left out, in this order:
    `## Breaking changes`, `## Features`, `## Security`, `## Fixes`,
-   `## Documentation`, `## Maintenance`. Each commit goes into one section:
-   breaking changes of the actions (as for the version) into
-   `## Breaking changes`; otherwise scope `security` into `## Security`,
-   `feat` into `## Features`, `fix` into `## Fixes`, `docs` into
-   `## Documentation`, and all other types (also `perf`, `refactor`,
-   `revert` and subjects without a type) into `## Maintenance`, where
-   Dependabot's updates (`build(deps)`) share one bullet. Each bullet is the
-   description of a pull request title and ends with the issues that the
-   pull request closes and its number.
-3. `## Commits`: GitHub's generated notes, without their `## What's Changed`
-   header.
-4. The last line is GitHub's generated `**Full Changelog**: …` line.
+   `## Documentation`, `## Maintenance`. Each bullet ends with its issue and
+   pull request numbers. The draft (`release.sh draft`) puts breaking
+   changes of the actions (as for the version) into `## Breaking changes`;
+   otherwise scope `security` into `## Security`, `feat` into
+   `## Features`, `fix` into `## Fixes`, `docs` into `## Documentation`,
+   and all other types into `## Maintenance`, where Dependabot's updates
+   (`build(deps)`) share one bullet.
 
-Edit the notes of a release afterwards if they need more context, e.g., for
-the migration steps of a major release.
+No other headings and no `TODO`. The workflow appends:
+
+1. `## Commits`: GitHub's generated notes, without their `## What's Changed`
+   header.
+2. The last line: GitHub's generated `**Full Changelog**: …` line.

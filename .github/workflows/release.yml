@@ -1,116 +1,135 @@
 ---
-# Releases the shared actions, without manual steps (see RELEASING.md):
-# after CI passed for a push to `main`, creates the next `vX.Y.Z` tag and a
-# GitHub release on the pushed commit, if a commit since the last release
-# changed an action (`.github/scripts/release.sh plan`). The release API
-# creates the tag, so nothing is pushed to `main`. Callers' Dependabot then
-# bumps their pins `@<commit> # vX.Y.Z`. A weekly run releases the latest
-# commit of `main` that passed CI, in case a run was cancelled or failed
+# Releases the shared actions when the maintainer pushes a signed version
+# tag `vX.Y.Z` (see RELEASING.md). `prepare` checks the tag (annotated,
+# signature verified by GitHub, on a commit of `main` for which CI passed,
+# the next version after the last release, see `.github/scripts/release.sh
+# check`) and the curated notes `docs/releases/vX.Y.Z.md` of the tagged
+# commit (`release.sh lint`). `publish` creates the GitHub release with the
+# curated notes followed by GitHub's generated notes (`release.sh notes`),
+# after approval in the `release` environment. Release tags are protected
+# and immutable (tag rulesets). Callers' Dependabot then bumps their pins
+# `@<commit> # vX.Y.Z`.
 name: Release
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-    branches: [main]
-  schedule:
-    - cron: "23 5 * * 1"
+  push:
+    tags: ["v*"]
 
-permissions: {}
+permissions:
+  contents: read
+
+# One run per tag, so that a run waiting for approval is not cancelled by
+# the run of another tag
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  publish:
-    name: Release actions
-    # Only pushes to `main` of this repository (not pull requests or forks'
-    # branches named `main`), and only if CI passed; or the weekly run
-    if: >-
-      github.event_name == 'schedule'
-      || (github.event.workflow_run.conclusion == 'success'
-        && github.event.workflow_run.event == 'push'
-        && github.event.workflow_run.head_branch == 'main'
-        && github.event.workflow_run.head_repository.full_name == github.repository)
-    # One release at a time; a waiting run is replaced by the run for a
-    # newer push, which includes its commits (a replaced run's changes are
-    # released by the next push or the weekly run). On the job, not the
-    # workflow, so that skipped runs (e.g. CI of pull requests) replace
-    # nothing
-    concurrency:
-      group: release
-      cancel-in-progress: false
+  prepare:
+    name: Prepare release
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      # Find the latest commit that passed CI (weekly run)
+      contents: read
+      # Read the CI runs of the release commit
       actions: read
-      # Create the tag and the release
-      contents: write
-      # Look up the issues that each pull request closes
-      issues: read
-      pull-requests: read
+    outputs:
+      sha: ${{ steps.tag.outputs.sha }}
+      previous: ${{ steps.version.outputs.previous }}
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-          fetch-depth: 0
-          fetch-tags: true
           persist-credentials: false
-      - name: Pick the commit
-        id: commit
+          # Full history and all tags, for the checks against `main` and the
+          # last release
+          fetch-depth: 0
+      # Guards against accidental releases, e.g., of unmerged commits; the
+      # `release` environment's protection rules (required reviewer) are
+      # what actually control publishing
+      - name: Check release tag and commit
+        id: tag
         env:
+          TAG: ${{ github.ref_name }}
           GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          REPOSITORY: ${{ github.repository }}
         run: |
-          sha="${HEAD_SHA}"
-          if [[ -z "${sha}" ]]; then
-            sha="$(gh run list --workflow ci.yml --branch main --event push \
-              --status success --limit 1 --json headSha --jq '.[0].headSha // ""')"
-          fi
-          echo "sha=${sha}" >> "${GITHUB_OUTPUT}"
-      - name: Plan the release
-        id: plan
-        if: steps.commit.outputs.sha != ''
-        env:
-          COMMIT: ${{ steps.commit.outputs.sha }}
-        run: |
-          plan="$(bash .github/scripts/release.sh plan "${COMMIT}")"
-          echo "${plan}" >> "${GITHUB_OUTPUT}"
-          if [[ -z "${plan}" ]]; then
-            echo "No release: no changes to the actions since the last release" \
-              >> "${GITHUB_STEP_SUMMARY}"
-          fi
-      - name: Write the release notes
-        if: steps.plan.outputs.tag != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          TAG: ${{ steps.plan.outputs.tag }}
-          PREVIOUS: ${{ steps.plan.outputs.previous }}
-          COMMIT: ${{ steps.commit.outputs.sha }}
-        run: |
-          bash .github/scripts/release.sh notes "${TAG}" "${PREVIOUS}" \
-            "${COMMIT}" > "${RUNNER_TEMP}/notes.md"
-          cat "${RUNNER_TEMP}/notes.md" >> "${GITHUB_STEP_SUMMARY}"
-      # Creates the tag on the commit; fails without creating anything if a
-      # tag ruleset doesn't let GitHub Actions create it. The release API
-      # would use an existing tag as it is, so check that there is none
-      # before, and that the tag points to the commit after
-      - name: Create the release
-        if: steps.plan.outputs.tag != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          TAG: ${{ steps.plan.outputs.tag }}
-          COMMIT: ${{ steps.commit.outputs.sha }}
-        run: |
-          if gh api "repos/${GH_REPO}/git/ref/tags/${TAG}" --silent 2> /dev/null; then
-            echo "::error title=Release::The tag ${TAG} exists already"
+          # Annotated, with a signature that GitHub verified
+          if [[ "$(git cat-file -t "refs/tags/${TAG}")" != "tag" ]]; then
+            echo "::error::Tag '${TAG}' is not annotated (git tag -s)"
             exit 1
           fi
-          gh release create "${TAG}" --target "${COMMIT}" --title "${TAG}" \
-            --notes-file "${RUNNER_TEMP}/notes.md"
-          tagged="$(gh api "repos/${GH_REPO}/git/ref/tags/${TAG}" --jq .object.sha)"
-          if [[ "${tagged}" != "${COMMIT}" ]]; then
-            echo "::error title=Release::${TAG} points to ${tagged}, not ${COMMIT}"
+          verified="$(gh api "repos/${REPOSITORY}/git/tags/$(git rev-parse "refs/tags/${TAG}")" \
+            --jq .verification.verified)"
+          if [[ "${verified}" != "true" ]]; then
+            echo "::error::Tag '${TAG}' has no signature verified by GitHub (git tag -s)"
             exit 1
+          fi
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::Release commit is not on 'main'"
+            exit 1
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
+      - name: Check release version
+        id: version
+        env:
+          TAG: ${{ github.ref_name }}
+          SHA: ${{ steps.tag.outputs.sha }}
+        run: bash .github/scripts/release.sh check "${TAG}" "${SHA}" >> "${GITHUB_OUTPUT}"
+      # Curated notes are published as written, so they must be finished
+      # and in the organisation's format
+      - name: Check release notes
+        env:
+          TAG: ${{ github.ref_name }}
+        run: bash .github/scripts/release.sh lint "${TAG}" "docs/releases/${TAG}.md"
+      # The checks above don't run the tests: require a successful run of
+      # the CI workflow for the push of the release commit to `main`; runs
+      # for pull requests test merge commits, not the commit itself.
+      # Re-runs that succeeded count
+      - name: Check that CI passed for the release commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          SHA: ${{ steps.tag.outputs.sha }}
+        run: |
+          runs="$(gh api "repos/${REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${SHA}&event=push&status=success&per_page=1" \
+            --jq .total_count)"
+          if [[ ! "${runs}" =~ ^[0-9]+$ || "${runs}" -lt 1 ]]; then
+            echo "::error::No successful run of the CI workflow (ci.yml) for a push of ${SHA}; once CI passed for it, re-run this workflow"
+            exit 1
+          fi
+
+  publish:
+    name: Publish release
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      # Create the release
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+      # A re-run after the release was created only updates its notes,
+      # which stay editable on immutable releases
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          PREVIOUS: ${{ needs.prepare.outputs.previous }}
+          SHA: ${{ needs.prepare.outputs.sha }}
+        run: |
+          notes="${RUNNER_TEMP}/notes.md"
+          bash .github/scripts/release.sh notes "${TAG}" "${PREVIOUS}" "${SHA}" \
+            "docs/releases/${TAG}.md" > "${notes}"
+          cat "${notes}" >> "${GITHUB_STEP_SUMMARY}"
+          if gh release view "${TAG}" > /dev/null 2>&1; then
+            gh release edit "${TAG}" --title "${TAG}" --notes-file "${notes}"
+          else
+            gh release create "${TAG}" --verify-tag --title "${TAG}" \
+              --notes-file "${notes}"
           fi
