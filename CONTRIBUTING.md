@@ -101,9 +101,10 @@ squash merge:
 
 Use `feat`, `fix`, `perf`, `refactor` and `style` only for changes to what is
 deployed or published: the app or library, its Helm chart or its packages.
-Everything else uses `build`, `ci`, `docs`, `test` or `chore`. Where a
-repository has the `PR title` check, it enforces these rules for pull request
-titles.
+Other changes use `build`, `ci`, `docs`, `test` or `chore`, and reverts
+`revert`. Where a repository has the `PR title` check, it checks the format,
+allowed types, length, first word and trailing period of pull request
+titles; reviews check the mood and whether the type fits the change.
 
 ## Citation metadata
 
