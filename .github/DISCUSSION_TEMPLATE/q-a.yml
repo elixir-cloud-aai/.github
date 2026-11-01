@@ -1,0 +1,53 @@
+---
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Thanks for your question! Please give us enough context to answer it.
+        Never report vulnerabilities here: follow the security policy
+        instead.
+  - type: dropdown
+    id: repository
+    attributes:
+      label: Repository
+      description: Which project is your question about?
+      options:
+        - Cloud Registry
+        - Cloud Registry UI
+        - Cloud Components
+        - FOCA
+        - FOCA plugins
+        - proTES
+        - TRS-Filer
+        - other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Which version (release or commit) are you using?
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What do you want to do, and what have you tried?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: >-
+        Relevant log output or error messages. Remove secrets and tokens
+        first. They are formatted as code automatically.
+      render: shell
+  - type: checkboxes
+    id: searched
+    attributes:
+      label: Before you ask
+      options:
+        - label: >-
+            I have read the documentation of the repository and searched its
+            issues and the existing discussions.
+          required: true

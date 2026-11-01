@@ -1,11 +1,19 @@
 ---
 blank_issues_enabled: false
 contact_links:
+  - name: Ask a question
+    url: https://github.com/orgs/elixir-cloud-aai/discussions/categories/q-a
+    about: Ask questions about our projects on the discussion board.
+  - name: Chat with the community
+    url: https://join.slack.com/t/elixir-cloud/shared_invite/zt-4f6zdhi84-X4YBkJHxhYmVIHJkRfY2JQ
+    about: Join our Slack workspace for informal discussions.
+  - name: Contact the maintainers
+    url: https://github.com/elixir-cloud-aai/.github/blob/main/SUPPORT.md
+    about: >-
+      For anything else, email the maintainers at
+      cloud-service@elixir-europe.org.
   - name: Report a vulnerability
     url: https://github.com/elixir-cloud-aai/.github/blob/main/SECURITY.md
     about: >-
       Report vulnerabilities privately, as described in the security policy,
       never in public issues.
-  - name: Ask a question
-    url: https://elixir-cloud-aai.github.io/about/contact/
-    about: For questions and informal discussions, contact the community.

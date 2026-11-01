@@ -1,0 +1,51 @@
+---
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Thanks for telling us how you use our services! Your report helps us
+        decide what to work on next.
+  - type: input
+    id: organisation
+    attributes:
+      label: Organisation
+      description: Which organisation or project are you with (optional)?
+  - type: dropdown
+    id: services
+    attributes:
+      label: Services
+      description: Which of our services do you use? Select all that apply.
+      multiple: true
+      options:
+        - Cloud Registry
+        - Cloud Registry UI
+        - Cloud Components
+        - FOCA
+        - FOCA plugins
+        - proTES
+        - TRS-Filer
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: >-
+        Where do you run them (optional), e.g., Kubernetes flavour, identity
+        provider?
+  - type: textarea
+    id: use
+    attributes:
+      label: Use
+      description: What do you use them for?
+    validations:
+      required: true
+  - type: checkboxes
+    id: listing
+    attributes:
+      label: Adopters list
+      options:
+        - label: >-
+            You may list us as an adopter (e.g., on
+            [elixir-on.cloud](https://elixir-on.cloud/)).
