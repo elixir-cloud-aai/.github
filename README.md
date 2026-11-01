@@ -29,9 +29,9 @@ files][gh-health-files]):
 - [issue templates](.github/ISSUE_TEMPLATE/);
 - [pull request template](.github/pull_request_template.md).
 
-A repository can override any of them by adding a file of the same name.
-Prefer changing the defaults here over adding repository-specific copies, so
-that all repositories follow the same rules.
+The organisation's repositories don't override them with files of their own,
+so that all repositories follow the same rules: change the defaults here, and
+describe repository specifics in each repository's documentation.
 
 [`profile/README.md`](profile/README.md) is the organisation's home page on
 GitHub.
