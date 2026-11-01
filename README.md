@@ -36,6 +36,12 @@ describe repository specifics in each repository's documentation.
 [`profile/README.md`](profile/README.md) is the organisation's home page on
 GitHub.
 
+This repository is also the source of the organisation's [discussion
+board][discussions]: the forms in
+[`.github/DISCUSSION_TEMPLATE/`](.github/DISCUSSION_TEMPLATE/) structure new
+posts in its Q&A and Adoption categories (one form per category, named after
+its slug).
+
 ## Shared actions
 
 Composite actions, in `actions/<name>/`, that the other repositories share
@@ -83,4 +89,5 @@ described in our [security policy](SECURITY.md).
 [badge-license]: <https://img.shields.io/badge/license-Apache%202.0-blue.svg>
 [badge-url-build-status]: <https://github.com/elixir-cloud-aai/.github/actions/workflows/ci.yml>
 [badge-url-license]: <https://www.apache.org/licenses/LICENSE-2.0>
+[discussions]: <https://github.com/orgs/elixir-cloud-aai/discussions>
 [gh-health-files]: <https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions/creating-a-default-community-health-file>
