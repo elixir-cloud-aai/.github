@@ -13,7 +13,7 @@ have their own `SUPPORT.md`.
 - Vulnerabilities: report them privately, as described in the
   [security policy](https://github.com/elixir-cloud-aai/.github/blob/main/SECURITY.md),
   **never** in public issues or discussions.
-- Anything else: email
+- Anything else, including questions you can't ask in public: email
   [cloud-service@elixir-europe.org](mailto:cloud-service@elixir-europe.org).
 
 ## Before you ask
