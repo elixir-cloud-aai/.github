@@ -26,6 +26,7 @@ files][gh-health-files]):
 - [code of conduct](CODE_OF_CONDUCT.md);
 - [contributing guidelines](CONTRIBUTING.md);
 - [security policy](SECURITY.md);
+- [support guide](SUPPORT.md);
 - [issue templates](.github/ISSUE_TEMPLATE/);
 - [pull request template](.github/pull_request_template.md).
 
@@ -77,7 +78,8 @@ bash tests/release/test.sh
 
 Contributions are welcome! See the [contributing guidelines](CONTRIBUTING.md)
 and mind our [code of conduct](CODE_OF_CONDUCT.md). Report vulnerabilities as
-described in our [security policy](SECURITY.md).
+described in our [security policy](SECURITY.md). For help, see the [support
+guide](SUPPORT.md).
 
 [badge-build-status]: <https://github.com/elixir-cloud-aai/.github/actions/workflows/ci.yml/badge.svg>
 [badge-license]: <https://img.shields.io/badge/license-Apache%202.0-blue.svg>
