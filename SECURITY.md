@@ -1,8 +1,8 @@
 # Security policy
 
 This policy applies to every repository of
-[ELIXIR Cloud & AAI](https://github.com/elixir-cloud-aai) that has no
-`SECURITY.md` of its own; repositories with their own policy follow that one.
+[ELIXIR On-Cloud](https://github.com/elixir-cloud-aai); repositories don't
+have their own `SECURITY.md`.
 
 ## Reporting a vulnerability
 
@@ -16,10 +16,16 @@ requests or discussions:
 - by email to
   [cloud-service@elixir-europe.org](mailto:cloud-service@elixir-europe.org).
 
+Report a vulnerability to the repository of the component that has it (e.g.,
+FOCA for the framework, not the app you found it in); if you are unsure,
+report it where you found it, and the maintainers route it.
+
 Please include, as far as you can:
 
-- the affected repository and version (release or commit);
-- the relevant configuration (without secrets);
+- the affected repository and package(s), with their versions (release or
+  commit);
+- the versions of the components they run with (e.g., the FOCA version of an
+  app) and the relevant configuration (without secrets);
 - steps to reproduce, ideally a minimal example;
 - the impact, i.e., what an attacker can achieve.
 
@@ -27,8 +33,9 @@ Please include, as far as you can:
 
 Only the latest release of each repository is supported: security fixes are
 released in a new version of its latest release series (the latest minor
-version). Older versions get fixes only for critical issues, at the
-maintainers' discretion.
+version). In repositories that publish several packages, fixes are released
+for each affected package, and for any package that pins it. Older versions
+get fixes only for critical issues, at the maintainers' discretion.
 
 ## What happens next
 
