@@ -209,7 +209,7 @@ commit actions/gate/README.md "docs(gate): explain skips (#19)" > /dev/null
 commit .github/workflows/ci.yml "ci!: require the new gate (#20)" > /dev/null
 plain="$(commit actions/gate/check.sh "Merge something without a type")"
 notes="$(render_notes v2.0.1 v2.0.0 "${plain}")" || notes="error"
-expect_in "intro" "Release v2.0.1 of the shared actions of ELIXIR Cloud & AAI, with changes to \`gate\`. Callers pin" "${notes}"
+expect_in "intro" "Release v2.0.1 of the shared actions of ELIXIR On-Cloud, with changes to \`gate\`. Callers pin" "${notes}"
 expect_not_in "no breaking changes in a patch release" "reaking" "${notes}"
 expect_in "fix with scope security" $'## Security\n\n- Quote job IDs (#18).' "${notes}"
 expect_in "docs" $'## Documentation\n\n- Explain skips (#19).' "${notes}"
@@ -242,7 +242,7 @@ git switch -q main
 
 # The first release lists all actions
 notes="$(render_notes v1.0.0 "" "${first}")" || notes="error"
-expect_in "first intro" "The first release of the shared actions of ELIXIR Cloud & AAI: \`gate\`. Callers" "${notes}"
+expect_in "first intro" "The first release of the shared actions of ELIXIR On-Cloud: \`gate\`. Callers" "${notes}"
 expect_in "first: maintenance" $'## Maintenance\n\n- Set up CI (#2).\n- Add the gate action (#5).' "${notes}"
 
 # Failures: API errors of the issue lookup (failed call; errors in a

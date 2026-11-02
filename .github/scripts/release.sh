@@ -267,10 +267,10 @@ draft() {
     "${previous:-$(git hash-object -t tree /dev/null)}" "${commit}" \
     -- "${release_paths[@]}" | awk -F/ '{ print $2 }' | sort -u)
   if [[ -z "${previous}" ]]; then
-    printf 'The first release of the shared actions of ELIXIR Cloud & AAI'
+    printf 'The first release of the shared actions of ELIXIR On-Cloud'
     ((${#changed[@]} == 0)) || printf ': %s' "$(code_list "${changed[@]}")"
   else
-    printf 'Release %s of the shared actions of ELIXIR Cloud & AAI' "${tag}"
+    printf 'Release %s of the shared actions of ELIXIR On-Cloud' "${tag}"
     ((${#changed[@]} == 0)) \
       || printf ', with changes to %s' "$(code_list "${changed[@]}")"
   fi
