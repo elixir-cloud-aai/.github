@@ -36,8 +36,10 @@ contributors take on more responsibility. It names roles, not people.
   backup code owner.
 - **Leads** (team `leads`): set the org policies (community files,
   contributing rules, CI, releases, security), are responsible for releases
-  and the response to vulnerabilities (see the [security policy][security]),
-  and appoint maintainers.
+  and the response to vulnerabilities, and appoint maintainers. The
+  maintainers of the affected repository handle individual vulnerability
+  reports as described in the [security policy][security]; the leads oversee
+  the response.
 
 ## Decisions
 
