@@ -13,6 +13,9 @@ every repository of the [organisation](https://github.com/elixir-cloud-aai).
 - Ask questions in the [Q&A][q-a] category of our
   [discussion board][discussions], on [Slack][slack] or by email to
   [cloud-service@elixir-europe.org](mailto:cloud-service@elixir-europe.org).
+- Who decides what, and how contributors become maintainers, is described
+  in our
+  [governance document](https://github.com/elixir-cloud-aai/.github/blob/main/GOVERNANCE.md).
 
 ## Getting started
 

@@ -44,7 +44,8 @@ Contributions are welcome, from bug reports to code. Read our
 [contributing guidelines][contributing] and the [code of
 conduct][code-of-conduct], then open an issue or pull request in the
 repository you're interested in. Report vulnerabilities as described in our
-[security policy][security].
+[security policy][security]. How we make decisions is described in our
+[governance document][governance].
 
 Contact: [cloud-service@elixir-europe.org](mailto:cloud-service@elixir-europe.org)
 
@@ -57,6 +58,7 @@ Contact: [cloud-service@elixir-europe.org](mailto:cloud-service@elixir-europe.or
 [foca]: <https://github.com/elixir-cloud-aai/foca>
 [foca-docs]: <https://foca.readthedocs.io/>
 [ga4gh-driver-projects]: <https://www.ga4gh.org/our-community/driver-projects/>
+[governance]: <https://github.com/elixir-cloud-aai/.github/blob/main/GOVERNANCE.md>
 [protes]: <https://github.com/elixir-cloud-aai/proTES>
 [protes-docs]: <https://protes.readthedocs.io/>
 [security]: <https://github.com/elixir-cloud-aai/.github/blob/main/SECURITY.md>
