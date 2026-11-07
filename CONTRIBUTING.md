@@ -123,7 +123,7 @@ changes only your entry; don't add e-mail addresses.
 
 ## Repository specifics
 
-Repositories don't override the organisation's community health files
+Repositories must not override the organisation's community health files
 (this guide, the code of conduct, the security policy, the support guide and
 the issue and pull request templates; see the
 [README](https://github.com/elixir-cloud-aai/.github#no-overrides)), so every

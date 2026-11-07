@@ -33,11 +33,12 @@ files][gh-health-files]):
 
 ### No overrides
 
-No repository of the organisation overrides these files, and there are no
-exceptions: the organisation's policies bind every repository, whoever
-maintains it. This applies to the files above and to any other community
-health file GitHub supports (for example, discussion forms or the issue
-template configuration).
+No repository of the organisation may override these files, and there are
+no exceptions: the organisation's policies bind every repository, whoever
+maintains it. A repository that still has an override is being brought into
+line; until then, GitHub shows the repository's file instead of the
+organisation's. The policy covers the files above, not the discussion forms,
+which GitHub doesn't inherit.
 
 - **Why:** GitHub uses a repository's own file instead of the default, in
   the root, in `docs/` or in `.github/`, and in any letter case. One
@@ -52,9 +53,13 @@ template configuration).
   example `docs/contributing/index.md` (not `docs/contributing.md`), and are
   linked from the "Contributing" section of its README. They don't repeat
   the general rules; they link to them.
-- **Check** a repository with the community profile API:
-  `gh api repos/elixir-cloud-aai/<repo>/community/profile`; the file URLs it
-  lists must point to this repository.
+- **Check** a repository: in
+  `gh api repos/elixir-cloud-aai/<repo>/community/profile`, the entries for
+  the code of conduct, contributing guidelines, security policy, issue
+  template and pull request template must point to this repository (ignore
+  the others, such as the README and the license). The API doesn't list
+  `GOVERNANCE.md` or `SUPPORT.md`, so also check that neither exists in the
+  repository's root, `.github/` or `docs/`.
 
 [`profile/README.md`](profile/README.md) is the organisation's home page on
 GitHub.
