@@ -31,9 +31,30 @@ files][gh-health-files]):
 - [issue templates](.github/ISSUE_TEMPLATE/);
 - [pull request template](.github/pull_request_template.md).
 
-The organisation's repositories don't override them with files of their own,
-so that all repositories follow the same rules: change the defaults here, and
-describe repository specifics in each repository's documentation.
+### No overrides
+
+No repository of the organisation overrides these files, and there are no
+exceptions: the organisation's policies bind every repository, whoever
+maintains it. This applies to the files above and to any other community
+health file GitHub supports (for example, discussion forms or the issue
+template configuration).
+
+- **Why:** GitHub uses a repository's own file instead of the default, in
+  the root, in `docs/` or in `.github/`, and in any letter case. One
+  repository's `CONTRIBUTING.md` or `SECURITY.md` would therefore hide the
+  organisation's rules from its contributors and reporters, and the rules
+  would drift apart between repositories.
+- **General rules** live here, in one place: change the defaults in this
+  repository, by pull request.
+- **Repository specifics** (development setup, local checks, language
+  guidelines, the release process, the documentation build) live in each
+  repository's documentation, at paths that GitHub doesn't match, for
+  example `docs/contributing/index.md` (not `docs/contributing.md`), and are
+  linked from the "Contributing" section of its README. They don't repeat
+  the general rules; they link to them.
+- **Check** a repository with the community profile API:
+  `gh api repos/elixir-cloud-aai/<repo>/community/profile`; the file URLs it
+  lists must point to this repository.
 
 [`profile/README.md`](profile/README.md) is the organisation's home page on
 GitHub.
