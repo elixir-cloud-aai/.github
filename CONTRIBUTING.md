@@ -123,10 +123,14 @@ changes only your entry; don't add e-mail addresses.
 
 ## Repository specifics
 
-Repositories don't have their own `CONTRIBUTING.md`. Their development setup,
-the checks to run locally, language guidelines, the release process and the
-documentation build are described in their documentation, linked from the
-"Contributing" section of their README.
+Repositories must not override the organisation's community health files
+(this guide, the code of conduct, the security policy, the support guide and
+the issue and pull request templates; see the
+[README](https://github.com/elixir-cloud-aai/.github#no-overrides)), so every
+repository follows the same rules. Their development setup, the checks to
+run locally, language guidelines, the release process and the documentation
+build are described in their documentation, linked from the "Contributing"
+section of their README.
 
 [discussions]: <https://github.com/orgs/elixir-cloud-aai/discussions>
 [q-a]: <https://github.com/orgs/elixir-cloud-aai/discussions/categories/q-a>
