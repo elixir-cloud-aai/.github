@@ -94,6 +94,10 @@ jobs:
       # release notes, on a scratch repository
       - name: Test release scripts
         run: bash tests/release/test.sh
+      # Labels: labels/labels.yml is well-formed, and labels/sync.sh reports
+      # and fixes differences (against a stubbed gh)
+      - name: Test labels
+        run: bash tests/labels/test.sh
       # gate: the rules, on sets of job results
       - name: Test gate rules
         run: bash tests/gate/test.sh

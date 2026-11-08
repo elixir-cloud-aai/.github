@@ -1,0 +1,171 @@
+# Labels of all repositories of the organisation; the source of truth for
+# `labels/sync.sh`, which creates missing labels and aligns colours and
+# descriptions (it never deletes labels). `labels` matches the organisation's
+# default repository labels (Settings > Repository > Repository defaults),
+# which GitHub gives to new repositories; keep both in line. `temporary`
+# holds labels that every repository has for a limited time but that aren't
+# defaults. `repositories` lists the repositories the script syncs by default
+# (the maintained repositories of the organisation). Change labels by pull
+# request, then run the script.
+repositories:
+  - .github
+  - cloud-components
+  - cloud-registry
+  - cloud-registry-ui
+  - docs
+  - foca
+  - foca-plugins
+  - landing-page
+  - proTES
+  - Pubgrade
+  - Pubgrade-Sidecar
+  - TESK
+  - tesk-api
+  - tesk-core
+  - trs-filer
+labels:
+  - name: 'type: auth'
+    color: "0075ca"
+    description: Related to authorization or authentication
+  - name: 'type: bug'
+    color: "0075ca"
+    description: Something isn't working
+  - name: 'type: ci / cd'
+    color: "0075ca"
+    description: Related to continuous integration / delivery
+  - name: 'type: delivery'
+    color: "0075ca"
+    description: Related to packaging, deployment etc.
+  - name: 'type: dependencies'
+    color: "0075ca"
+    description: Related to managing upstream dependencies
+  - name: 'type: docs'
+    color: "0075ca"
+    description: Improvements or additions to documentation
+  - name: 'type: feature'
+    color: "0075ca"
+    description: New feature or request
+  - name: 'type: maintenance'
+    color: "0075ca"
+    description: Related to general repository maintenance
+  - name: 'type: question'
+    color: "0075ca"
+    description: Question about the project
+  - name: 'type: security'
+    color: "0075ca"
+    description: Related to security
+  - name: 'type: style'
+    color: "0075ca"
+    description: Related to code style
+  - name: 'type: testing'
+    color: "0075ca"
+    description: Related to code testing
+  - name: 'type flag: breaking change'
+    color: "00758a"
+    description: Proposed change breaks current API
+  - name: 'type flag: meta'
+    color: "00758a"
+    description: Generic issue that will spawn more specific issues
+  - name: 'type flag: required by specs'
+    color: "00758a"
+    description: Compliance with specs requires this change
+  - name: 'type flag: spec change'
+    color: "00758a"
+    description: Proposed change requires spec changes
+  - name: 'priority: critical'
+    color: "7213b2"
+    description: Needs immediate attention
+  - name: 'priority: high'
+    color: "7213b2"
+    description: High priority
+  - name: 'priority: low'
+    color: "7213b2"
+    description: Low priority
+  - name: 'priority: medium'
+    color: "7213b2"
+    description: Medium priority
+  - name: 'status: abandoned'
+    color: "d32869"
+    description: This will not be worked on
+  - name: 'status: blocked'
+    color: "d32869"
+    description: Something prevents progress
+  - name: 'status: in progress'
+    color: "d32869"
+    description: Currently being worked on
+  - name: 'status: on hold'
+    color: "d32869"
+    description: Won't be fixed for now
+  - name: 'status: triage'
+    color: "d32869"
+    description: Has not been triaged by admin
+  - name: 'status flag: discuss'
+    color: "a32869"
+    description: Needs input from various people
+  - name: 'status flag: duplicate'
+    color: "a32869"
+    description: Already exists
+  - name: 'status flag: help wanted'
+    color: "a32869"
+    description: Extra attention is needed
+  - name: 'status flag: need info'
+    color: "a32869"
+    description: Need further info from issuer
+  - name: 'status flag: need review'
+    color: "a32869"
+    description: Needs review from code owners
+  - name: 'workload: days'
+    color: "e2d953"
+    description: Likely takes days to resolve
+  - name: 'workload: hours'
+    color: "e2d953"
+    description: Likely takes hours to resolve
+  - name: 'workload: minutes'
+    color: "e2d953"
+    description: Likely takes minutes to resolve
+  - name: 'workload: weeks'
+    color: "e2d953"
+    description: Likely takes weeks to resolve
+  - name: 'flag: good 1st issue'
+    color: "e2b953"
+    description: Good for newcomers
+  - name: 'flag: nice to have'
+    color: "e2b953"
+    description: Not on the critical path right now
+temporary:
+  - name: 'ecp-wp4: D4.1'
+    color: "1d76db"
+    description: ELIXIR Compute Platform WP4 milestone/deliverable this issue contributes to
+  - name: 'ecp-wp4: D4.2'
+    color: "1d76db"
+    description: ELIXIR Compute Platform WP4 milestone/deliverable this issue contributes to
+  - name: 'ecp-wp4: D4.3'
+    color: "1d76db"
+    description: ELIXIR Compute Platform WP4 milestone/deliverable this issue contributes to
+  - name: 'ecp-wp4: D4.4'
+    color: "1d76db"
+    description: ELIXIR Compute Platform WP4 milestone/deliverable this issue contributes to
+  - name: 'ecp-wp4: D4.5'
+    color: "1d76db"
+    description: ELIXIR Compute Platform WP4 milestone/deliverable this issue contributes to
+  - name: 'ecp-wp4: D4.6'
+    color: "1d76db"
+    description: ELIXIR Compute Platform WP4 milestone/deliverable this issue contributes to
+  - name: 'ecp-wp4: D4.7'
+    color: "1d76db"
+    description: ELIXIR Compute Platform WP4 milestone/deliverable this issue contributes to
+  - name: 'ecp-wp4: M4.1'
+    color: "1d76db"
+    description: ELIXIR Compute Platform WP4 milestone/deliverable this issue contributes to
+  - name: 'ecp-wp4: M4.2'
+    color: "1d76db"
+    description: ELIXIR Compute Platform WP4 milestone/deliverable this issue contributes to
+  - name: 'ecp-wp4: M4.3'
+    color: "1d76db"
+    description: ELIXIR Compute Platform WP4 milestone/deliverable this issue contributes to
+  - name: 'ecp-wp4: M4.4'
+    color: "1d76db"
+    description: ELIXIR Compute Platform WP4 milestone/deliverable this issue contributes to
+  - name: 'ecp-wp4: M4.5'
+    color: "1d76db"
+    description: ELIXIR Compute Platform WP4 milestone/deliverable this issue contributes to

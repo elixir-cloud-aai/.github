@@ -70,6 +70,39 @@ board][discussions]: the forms in
 posts in its Q&A and Adoption categories (one form per category, named after
 its slug).
 
+## Labels
+
+All maintained repositories share one set of labels, in
+[`labels/labels.yml`](labels/labels.yml):
+
+- `labels`: the labels every repository has, in the form `<key>: <value>`
+  (`type`, `type flag`, `priority`, `status`, `status flag`, `workload`,
+  `flag`). They match the organisation's default repository labels
+  (organisation settings, Repository, Repository defaults), which GitHub gives
+  to new repositories; keep both in line.
+- `temporary`: labels that every repository has for a limited time, such as
+  the `ecp-wp4:` milestones and deliverables, but that aren't defaults.
+- `repositories`: the repositories that the sync script covers by default.
+
+Change labels by pull request; once it is merged, a maintainer runs
+[`labels/sync.sh`](labels/sync.sh) (with `gh` logged in as a user with write
+access, plus `yq` v4 and `jq`). It creates missing labels and aligns colours
+and descriptions; it never deletes labels, but reports labels a repository
+has beyond the file. `--check` only reports (exit status 1 on any
+difference, unlisted labels included); `--all` covers every repository of
+the organisation that isn't archived (read-only) or a fork:
+
+```bash
+labels/sync.sh --check   # report differences
+labels/sync.sh           # fix them
+```
+
+Rename a label with `gh label edit --name` rather than deleting it, so that
+issues and pull requests keep it; GitHub's default labels (`bug`,
+`enhancement`, and so on) and labels that bots add (`dependencies`,
+`python`, and so on) aren't used: configure Dependabot with
+`labels: ["type: dependencies"]`.
+
 ## Shared actions
 
 Composite actions, in `actions/<name>/`, that the other repositories share
