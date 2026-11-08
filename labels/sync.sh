@@ -7,7 +7,8 @@
 # them by hand (rename them with `gh label edit` to keep their assignments).
 #
 # Usage: labels/sync.sh [--check] [--all] [--file <labels.yml>] [<repo>...]
-#   --check  only report differences; exit 1 if there are any
+#   --check  only report differences (missing, differing and unlisted
+#            labels); exit 1 if there are any
 #   --all    all repositories of the organisation that aren't archived or forks
 #   <repo>   repository names in the organisation (default: the
 #            `repositories` list of labels.yml)
@@ -31,19 +32,29 @@ while (($#)); do
   shift
 done
 
-# Wanted labels as "name<TAB>color<TAB>description", from both lists
-mapfile -t WANTED < <(yq -o=json '(.labels // []) + (.temporary // [])' "$FILE" \
+# Wanted labels as "name<TAB>color<TAB>description", from both lists.
+# Command substitution (not process substitution) so that a failing yq, jq
+# or gh stops the script instead of leaving a partial list
+wanted=$(yq -o=json '(.labels // []) + (.temporary // [])' "$FILE" \
   | jq -r '.[] | [.name, (.color | ascii_downcase), (.description // "")] | @tsv')
+mapfile -t WANTED <<<"$wanted"
+[[ -n "$wanted" ]] || WANTED=()
 if ((${#WANTED[@]} == 0)); then
   echo "no labels in $FILE" >&2
   exit 2
 fi
 
+# --all: archived repositories are read-only and forks follow their
+# upstream, so both are left out
+repos=""
 if $ALL; then
-  mapfile -t REPOS < <(gh repo list "$ORG" --limit 1000 --no-archived --source \
+  repos=$(gh repo list "$ORG" --limit 10000 --no-archived --source \
     --json name --jq '.[].name' | sort)
 elif ((${#REPOS[@]} == 0)); then
-  mapfile -t REPOS < <(yq '.repositories // [] | .[]' "$FILE")
+  repos=$(yq '.repositories // [] | .[]' "$FILE")
+fi
+if [[ -n "$repos" ]]; then
+  mapfile -t REPOS <<<"$repos"
 fi
 if ((${#REPOS[@]} == 0)); then
   echo "no repositories: name them, use --all or fill 'repositories' in $FILE" >&2
@@ -76,11 +87,13 @@ for repo in "${REPOS[@]}"; do
     [[ -z "$name" ]] && continue
     if ! printf '%s\n' "${WANTED[@]}" | cut -f1 | grep -Fx -- "$name" >/dev/null; then
       echo "$repo: unlisted '$name' (not changed)"
+      differences=$((differences + 1))
     fi
   done <<<"$current"
 done
 
 if $CHECK && ((differences > 0)); then
-  echo "$differences difference(s); run without --check to fix them" >&2
+  echo "$differences difference(s); run without --check to fix missing and" \
+    "differing labels; decide on unlisted ones by hand" >&2
   exit 1
 fi

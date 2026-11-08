@@ -88,9 +88,9 @@ Change labels by pull request; once it is merged, a maintainer runs
 [`labels/sync.sh`](labels/sync.sh) (with `gh` logged in as a user with write
 access, plus `yq` v4 and `jq`). It creates missing labels and aligns colours
 and descriptions; it never deletes labels, but reports labels a repository
-has beyond the file. `--check` only reports (exit status 1 on differences),
-`--all` covers every repository of the organisation that isn't archived or
-a fork:
+has beyond the file. `--check` only reports (exit status 1 on any
+difference, unlisted labels included); `--all` covers every repository of
+the organisation that isn't archived (read-only) or a fork:
 
 ```bash
 labels/sync.sh --check   # report differences

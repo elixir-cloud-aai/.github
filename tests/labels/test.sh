@@ -70,7 +70,7 @@ echo "ok: --check"
 # sync: writes exactly the two differences
 labels/sync.sh --file "$tmp/labels.yml" repo >/dev/null
 [[ $(wc -l <"$GH_LOG") -eq 2 ]] || fail "expected 2 writes, got: $(cat "$GH_LOG")"
-grep -F "label create type: docs --repo elixir-cloud-aai/repo --color 0075ca" "$GH_LOG" >/dev/null \
+grep -F "label create type: docs --repo elixir-cloud-aai/repo --color 0075ca --description Docs --force" "$GH_LOG" >/dev/null \
   || fail "type: docs not fixed: $(cat "$GH_LOG")"
 grep -F "label create ecp-wp4: M4.1 --repo elixir-cloud-aai/repo --color 1d76db" "$GH_LOG" >/dev/null \
   || fail "ecp-wp4: M4.1 not created: $(cat "$GH_LOG")"
@@ -82,3 +82,24 @@ out=$(labels/sync.sh --check --file "$tmp/labels.yml" 2>&1 || true)
 grep -F "one: missing 'ecp-wp4: M4.1'" <<<"$out" >/dev/null || fail "repo 'one' not synced: $out"
 grep -F "two: missing 'ecp-wp4: M4.1'" <<<"$out" >/dev/null || fail "repo 'two' not synced: $out"
 echo "ok: repositories"
+
+# --check also fails on unlisted labels alone
+cat >"$tmp/aligned.yml" <<'EOF2'
+labels:
+  - name: 'type: bug'
+    color: "0075ca"
+    description: Something isn't working
+  - name: 'type: docs'
+    color: "ffffff"
+    description: Docs
+EOF2
+if labels/sync.sh --check --file "$tmp/aligned.yml" repo >/dev/null 2>&1; then
+  fail "--check passed with an unlisted label"
+fi
+echo "ok: unlisted"
+
+# a failing producer stops the script
+if labels/sync.sh --check --file "$tmp/missing.yml" repo >/dev/null 2>&1; then
+  fail "a missing file didn't stop the script"
+fi
+echo "ok: errors"
