@@ -80,15 +80,18 @@ REFERENCES = re.compile(r".*\(#[0-9]+(?:[,;][ \t]*#[0-9]+)*\)", re.ASCII)
 
 BULLETS_ONLY = "Sections hold bullets only, e.g., - <change> (#12, #34)"
 
-# Relative links (inline, also of images, or link reference definitions):
-# destinations without a scheme (e.g., `https:`, `mailto:`), which GitHub
-# resolves against the release page, not the docs
+# Relative links (inline, also of images, link reference definitions, or HTML
+# `href` and `src` attributes): destinations without a scheme (e.g., `https:`,
+# `mailto:`), which GitHub resolves against the release page, not the docs
 _NO_SCHEME = r"(?:<|(?!<))(?![a-z][a-z0-9+.-]*:)"
 RELATIVE = re.compile(
     rf"\]\([ \t]*{_NO_SCHEME}[^)\s<>]"
-    rf"|^ {{0,3}}\[[^\]]+\]:[ \t]*{_NO_SCHEME}[^\s<>]",
+    rf"|^ {{0,3}}\[[^\]]+\]:[ \t]*{_NO_SCHEME}[^\s<>]"
+    r"|\b(?:href|src)[ \t]*=[ \t]*[\"']?(?![a-z][a-z0-9+.-]*:)[^\s\"'>]",
     re.ASCII | re.IGNORECASE,
 )
+# Marks of unfinished notes
+TODO = re.compile(r"\b(?:TODO|FIXME)\b")
 RELATIVE_LINK = (
     "Relative link (e.g., to a page of the docs): it doesn't resolve in the"
     " GitHub release, so link absolutely (https://...)"
@@ -365,15 +368,20 @@ def check(markdown: str) -> list[Finding]:
         headings of `SECTIONS` (level 2, each once, in their order, none
         empty), holding bullets only, each ending with its issue and pull
         request numbers, none of the parts that the action adds
-        (`## Commits`, the `**Full Changelog**` line), and no relative links
-        (`RELATIVE`). An HTML comment on a line of its own counts as a blank
-        line.
+        (`## Commits`, the `**Full Changelog**` line), no relative links
+        (`RELATIVE`) and no marks of unfinished notes (`TODO`), also in code
+        blocks and comments, as they are published as written. An HTML
+        comment on a line of its own counts as a blank line.
     """
     lines = markdown.removeprefix("\ufeff").splitlines()
     findings = _Checker().run(lines)
     for number, line in enumerate(lines, start=1):
         if RELATIVE.search(line):
             findings.append(Finding(number, RELATIVE_LINK))
+        if TODO.search(line):
+            findings.append(
+                Finding(number, "Unfinished notes (TODO, FIXME): finish them first")
+            )
     return sorted(findings, key=lambda finding: finding.line)
 
 
@@ -570,6 +578,8 @@ class Settings:
         title: Title of the release (`TITLE`); empty for the tag.
         check_only: Whether to only check the release (`CHECK_ONLY`: true
             or false).
+        commit: Commit that the tag must point to (`COMMIT`); empty for no
+            check.
     """
 
     repository: str
@@ -579,6 +589,7 @@ class Settings:
     previous: str = ""
     title: str = ""
     check_only: bool = False
+    commit: str = ""
 
     @classmethod
     def from_env(cls, env: dict[str, str]) -> Settings:
@@ -604,6 +615,7 @@ class Settings:
             )
         return cls(
             check_only=check_only == "true",
+            commit=env.get("COMMIT", ""),
             repository=env["GH_REPO"],
             tag=env["TAG"],
             notes=Path(env["NOTES"]),
@@ -673,6 +685,36 @@ def _is_ours(
     )
 
 
+def _start(settings: Settings, releases: list[Release], tags: list[str]) -> str:
+    """Return the tag that the generated notes start from, and check it.
+
+    Args:
+        settings: Settings of the release.
+        releases: Releases of the repository (as the REST API lists them).
+        tags: Names of all tags of the repository.
+
+    Returns:
+        `previous` of the settings, else the detected previous release (see
+        `previous_release`; releases whose tag was deleted don't count); empty
+        if there is none.
+
+    Raises:
+        ReleaseError: If the tag isn't lower than the release's.
+    """
+    previous = settings.previous or previous_release(
+        settings.tag, [r for r in releases if r["tag_name"] in tags], tags
+    )
+    if previous == settings.tag or (
+        (key := parse_version(previous or "")) is not None
+        and (version := parse_version(settings.tag)) is not None
+        and key >= version
+    ):
+        raise ReleaseError(
+            f"The previous tag {previous} is not lower than {settings.tag}"
+        )
+    return previous or ""
+
+
 def publish(settings: Settings, gh: Runner = _gh) -> tuple[str, str]:
     """Create the GitHub release of a tag, with curated and generated notes.
 
@@ -690,7 +732,8 @@ def publish(settings: Settings, gh: Runner = _gh) -> tuple[str, str]:
 
     Raises:
         ReleaseError: If the notes have findings, the pre-release policy
-            doesn't apply, the tag or the previous tag doesn't exist, or a
+            doesn't apply, the tag or the previous tag doesn't exist, the tag
+            doesn't point to `commit`, the previous tag isn't lower, or a
             release (or a draft) of the tag exists already, unless it is a
             published release with these curated notes, title and pre-release
             flag (see `_is_ours`; e.g., when a job is re-run
@@ -727,18 +770,17 @@ def publish(settings: Settings, gh: Runner = _gh) -> tuple[str, str]:
     for name, kind in ((settings.tag, "tag"), (settings.previous, "previous tag")):
         if name and name not in tags:
             raise ReleaseError(f"The {kind} {name} doesn't exist on GitHub")
+    if settings.commit:
+        commit = gh(["api", f"repos/{repo}/commits/{settings.tag}", "--jq", ".sha"])
+        if commit.strip() != settings.commit:
+            raise ReleaseError(
+                f"The tag {settings.tag} points to {commit.strip()}, not to"
+                f" {settings.commit}"
+            )
+    previous = _start(settings, releases, tags)
     if settings.check_only:
         # Generating notes needs `contents: write`, which `prepare` lacks
         return curated, ""
-    previous = settings.previous or previous_release(settings.tag, releases, tags)
-    args = ["api", f"repos/{repo}/releases/generate-notes"]
-    args += ["-f", f"tag_name={settings.tag}"]
-    if previous:
-        args += ["-f", f"previous_tag_name={previous}"]
-    generated = gh([*args, "--jq", ".body"])
-    text, warnings = body(curated, generated)
-    for warning in warnings:
-        print(f"::warning::{warning}; kept as they are", file=sys.stderr)
     if existing:
         release = existing[0]
         if _is_ours(release, settings, curated, prerelease):
@@ -754,6 +796,14 @@ def publish(settings: Settings, gh: Runner = _gh) -> tuple[str, str]:
             " or pre-release flag: releases are not changed or replaced, so"
             " release the next version"
         )
+    args = ["api", f"repos/{repo}/releases/generate-notes"]
+    args += ["-f", f"tag_name={settings.tag}"]
+    if previous:
+        args += ["-f", f"previous_tag_name={previous}"]
+    generated = gh([*args, "--jq", ".body"])
+    text, warnings = body(curated, generated)
+    for warning in warnings:
+        print(f"::warning::{warning}; kept as they are", file=sys.stderr)
     latest = is_latest(settings.tag, prerelease, releases)
     with tempfile.NamedTemporaryFile(
         "w", encoding="utf-8", suffix=".md", delete=False

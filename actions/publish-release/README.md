@@ -53,6 +53,9 @@ jobs:
   publish:
     name: Publish release
     needs: [prepare, push]
+    concurrency:
+      group: ${{ github.workflow }}-publish
+      cancel-in-progress: false
     permissions:
       contents: write
     steps:
@@ -64,10 +67,14 @@ jobs:
         uses: elixir-cloud-aai/.github/actions/publish-release@<commit SHA> # vX.Y.Z
         with:
           notes: docs/releases/${{ needs.prepare.outputs.version }}.md
+          commit: ${{ github.sha }}
 ```
 
 Run `publish` last, after all artefacts are published, so that the release
-appears only once everything it announces exists.
+appears only once everything it announces exists. Give it a concurrency
+group per repository (e.g., `group: ${{ github.workflow }}-publish`,
+`cancel-in-progress: false`), so that releases of two tags don't both decide
+to be the latest release.
 
 ## Inputs
 
@@ -81,12 +88,17 @@ appears only once everything it announces exists.
   (e.g., `v0.4.0`, `1.2.0rc1`, `v2.0.0-beta.1`), and fails for tags that are
   no versions.
 - `previous-tag`: the tag that GitHub's generated notes start from; it must
-  exist. Default is the highest lower version with a published release
-  (pre-releases included, drafts not), except, for a final release, its own
+  exist and be lower than `tag`. Default is the highest lower version with a
+  published release whose tag exists (pre-releases included, drafts not),
+  except, for a final release, its own
   pre-releases, so that `## Commits` of `1.2.0` covers everything since
   `1.1.0`, not since `1.2.0rc1`; without one, the highest such version tag
   (e.g., of releases made before the repository published GitHub
   releases); without either, GitHub picks the start.
+- `commit`: the commit SHA that the tag must point to, e.g., the one the
+  artefacts were built from (`github.sha` or the `prepare` job's output);
+  default is no check. Tag rulesets that make release tags immutable make
+  this a second line of defence.
 - `title`: the title of the release; default is the tag.
 - `check-only`: `true` to only check that the release can be created,
   `false` (default) to create it; other values fail.
@@ -104,12 +116,15 @@ appears only once everything it announces exists.
   intro paragraph (lists and code blocks alone don't count), then only the
   sections above (level 2, each once, in order, none empty), holding bullets
   only, each ending with its numbers; no `## Commits` section and no
-  `**Full Changelog**` line, which the action adds; no relative links, which
-  don't resolve on the release page. An HTML comment on a line of its own
-  counts as a blank line (and stays in the release, invisible). Findings are
-  error annotations with file and line. Then the settings: the
-  `prerelease` policy (`auto` needs a version tag), the tag and
-  `previous-tag` must exist. All of this, and the existing releases below,
+  `**Full Changelog**` line, which the action adds; no relative links (also
+  in HTML `href` and `src`), which don't resolve on the release page; no
+  `TODO` or `FIXME`. Links and marks are checked on every line, also in code
+  blocks and comments. An HTML comment on a line of its own counts as a
+  blank line (and stays in the release, invisible). Findings are error
+  annotations with file and line. Then the settings: the `prerelease`
+  policy (`auto` needs a version tag), the tag and `previous-tag` must
+  exist, the tag must point to `commit` (if set), and the previous tag must
+  be lower than the tag. All of this, and the existing releases below,
   is also checked with `check-only`, before anything is published (but
   drafts are visible only with `contents: write`, so `check-only` with
   `contents: read` doesn't see them).

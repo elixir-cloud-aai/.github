@@ -35,6 +35,12 @@ inputs:
       tag (for a final release, not its own pre-releases).
     required: false
     default: ""
+  commit:
+    description: >-
+      Commit SHA that the tag must point to (e.g., the one the artefacts were
+      built from). Default is no check.
+    required: false
+    default: ""
   title:
     description: Title of the release. Default is the tag.
     required: false
@@ -71,4 +77,5 @@ runs:
         PREVIOUS_TAG: ${{ inputs.previous-tag }}
         TITLE: ${{ inputs.title }}
         CHECK_ONLY: ${{ inputs.check-only }}
+        COMMIT: ${{ inputs.commit }}
       run: python3 -I "${GITHUB_ACTION_PATH}/publish.py" publish

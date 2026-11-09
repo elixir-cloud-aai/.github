@@ -94,6 +94,7 @@ VALID = [
     "Intro.\n\n## Fixes\n\n- Fix of\n#12 (#13)\n",
     # Absolute links (with a scheme) and other brackets
     "Intro, see [docs](https://example.org/en/latest/).\n",
+    'Intro, see <a href="https://example.org/">docs</a>; a TODOS list.\n',
     "Intro, write to [us](mailto:x@example.org).\n",
     "Intro, see [docs](<https://example.org/a b>).\n",
     "Intro, see [docs][1].\n\n[1]: https://example.org/\n",
@@ -178,6 +179,14 @@ INVALID = [
     ("Intro, see [docs](<docs/index.md>).\n", [(1, "Relative link (e.g.,")]),
     ("Intro, see ![logo](images/logo.svg).\n", [(1, "Relative link (e.g.,")]),
     ("Intro, see [docs][1].\n\n[1]: docs/index.md\n", [(3, "Relative link (e.g.,")]),
+    ('Intro, see <a href="../guide.md">it</a>.\n', [(1, "Relative link (e.g.,")]),
+    ("Intro, see <img src=logo.svg>.\n", [(1, "Relative link (e.g.,")]),
+    # Unfinished notes, also in comments
+    ("Intro. TODO: more.\n", [(1, "Unfinished notes (TODO,")]),
+    (
+        "Intro.\n\n## Fixes\n\n- Fix (#1)\n<!-- FIXME -->\n",
+        [(6, "Unfinished notes (TODO,")],
+    ),
 ]
 
 
@@ -196,8 +205,10 @@ def _messages(markdown: str) -> list[tuple[int, str]]:
     ]
 
 
-# Tags of the repository that `FakeGh` serves by default
+# Tags of the repository that `FakeGh` serves by default, and the commit
+# that every tag points to
 TAGS = ["v0.9.0", "v1.0.0", "v1.1.0", "v1.2.0"]
+COMMIT = "0123456789abcdef0123456789abcdef01234567"
 
 
 def _release(
@@ -287,6 +298,8 @@ class FakeGh:
             return json.dumps([self.releases[:half], self.releases[half:]])
         if args[:2] == ["api", "--paginate"] and "matching-refs" in args[2]:
             return "".join(f"{tag}\n" for tag in self.tags)
+        if "/commits/" in args[1]:
+            return f"{COMMIT}\n"
         if args[1].endswith("/releases/generate-notes"):
             return self.generated + "\n"
         if args[:2] == ["release", "create"]:
@@ -657,6 +670,40 @@ class TestPublish(unittest.TestCase):
                 with self.assertRaisesRegex(publish.ReleaseError, message):
                     publish.publish(settings, gh)
                 self.assertEqual(len(gh.calls), 2)
+
+    def test_publish_commit(self) -> None:
+        """With `commit`, the tag must point to it."""
+        for check_only in (False, True):
+            with self.subTest(check_only=check_only):
+                settings = dataclasses.replace(
+                    self.settings, check_only=check_only, commit=COMMIT
+                )
+                publish.publish(settings, FakeGh())
+                gh = FakeGh()
+                other = dataclasses.replace(settings, commit="f" * 40)
+                with self.assertRaisesRegex(publish.ReleaseError, "points to 0123"):
+                    publish.publish(other, gh)
+                self.assertIn(
+                    ["api", "repos/o/r/commits/v1.2.0", "--jq", ".sha"], gh.calls
+                )
+
+    def test_publish_previous_not_lower(self) -> None:
+        """A previous tag that isn't lower than the tag fails."""
+        for previous in ("v1.2.0", "v1.3.0"):
+            with self.subTest(previous=previous):
+                gh = FakeGh(tags=[*TAGS, "v1.3.0"])
+                settings = dataclasses.replace(
+                    self.settings, previous=previous, check_only=True
+                )
+                with self.assertRaisesRegex(publish.ReleaseError, "is not lower"):
+                    publish.publish(settings, gh)
+
+    def test_publish_previous_tag_deleted(self) -> None:
+        """Releases whose tag was deleted aren't the start."""
+        releases = [_release("v1.1.5"), _release("v1.1.0")]
+        gh = FakeGh(releases=releases)
+        publish.publish(self.settings, gh)
+        self.assertIn("previous_tag_name=v1.1.0", gh.calls[-2])
 
     def test_publish_no_version(self) -> None:
         """`auto` fails for tags that are no versions, before any call."""
