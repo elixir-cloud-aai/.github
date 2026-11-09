@@ -5,6 +5,7 @@ updates:
   # (`/actions/*`, so that new actions need no entry of their own)
   - package-ecosystem: github-actions
     directories: ["/", "/actions/*"]
+    labels: ["type: dependencies"]
     schedule:
       interval: monthly
     groups:
@@ -13,6 +14,7 @@ updates:
   # Hook revisions in `.pre-commit-config.yaml`
   - package-ecosystem: pre-commit
     directory: /
+    labels: ["type: dependencies"]
     schedule:
       interval: monthly
     groups:
