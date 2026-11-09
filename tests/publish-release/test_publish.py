@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import dataclasses
 import importlib.util
 import io
+import itertools
 import json
 import os
 import subprocess
@@ -199,7 +201,12 @@ TAGS = ["v0.9.0", "v1.0.0", "v1.1.0", "v1.2.0"]
 
 
 def _release(
-    tag: str, *, draft: bool = False, prerelease: bool = False, body: str = ""
+    tag: str,
+    *,
+    draft: bool = False,
+    prerelease: bool = False,
+    body: str = "",
+    name: str | None = None,
 ) -> dict[str, object]:
     """Return a release as the REST API lists it (the fields used).
 
@@ -208,12 +215,14 @@ def _release(
         draft: Whether the release is a draft.
         prerelease: Whether the release is a pre-release.
         body: Body of the release.
+        name: Title of the release; default is the tag.
 
     Returns:
         The release.
     """
     return {
         "tag_name": tag,
+        "name": tag if name is None else name,
         "draft": draft,
         "prerelease": prerelease,
         "body": body,
@@ -579,39 +588,71 @@ class TestPublish(unittest.TestCase):
 
     def test_publish_draft_exists(self) -> None:
         """A draft of the tag fails, before notes are generated."""
-        gh = FakeGh(releases=[_release("v1.1.0"), _release("v1.2.0", draft=True)])
-        with self.assertRaisesRegex(publish.ReleaseError, "draft release"):
-            publish.publish(self.settings, gh)
-        self.assertEqual(len(gh.calls), 1)
+        for check_only in (False, True):
+            with self.subTest(check_only=check_only):
+                releases = [_release("v1.1.0"), _release("v1.2.0", draft=True)]
+                gh = FakeGh(releases=releases)
+                settings = dataclasses.replace(self.settings, check_only=check_only)
+                with self.assertRaisesRegex(publish.ReleaseError, "draft release"):
+                    publish.publish(settings, gh)
+                self.assertEqual(len(gh.calls), 1)
 
     def test_publish_exists(self) -> None:
-        """A published release of the tag with another body fails."""
-        gh = FakeGh(releases=[_release("v1.1.0"), _release("v1.2.0", body="Old.")])
-        with self.assertRaisesRegex(publish.ReleaseError, "with another body"):
-            publish.publish(self.settings, gh)
-        self.assertFalse(any(call[0] == "release" for call in gh.calls))
-
-    def test_publish_exists_same_body(self) -> None:
-        """A re-run after a creation that succeeded passes, without changes."""
+        """A published release with other notes, title or flag fails."""
         text = publish.body(CURATED, GENERATED)[0]
-        gh = FakeGh(releases=[_release("v1.1.0"), _release("v1.2.0", body=text)])
-        stderr = io.StringIO()
-        with redirect_stderr(stderr):
-            result = publish.publish(self.settings, gh)
-        self.assertEqual(result, (text, "https://github.com/o/r/releases/tag/v1.2.0"))
-        self.assertFalse(any(call[0] == "release" for call in gh.calls))
-        self.assertIn("::notice::The release v1.2.0 exists already", stderr.getvalue())
+        for release in [
+            _release("v1.2.0", body="Old."),
+            _release("v1.2.0", body=f"{CURATED.strip()} more"),
+            _release("v1.2.0", body=text, name="Other"),
+            _release("v1.2.0", body=text, prerelease=True),
+        ]:
+            with self.subTest(release=release):
+                gh = FakeGh(releases=[_release("v1.1.0"), release])
+                with self.assertRaisesRegex(publish.ReleaseError, "with other notes"):
+                    publish.publish(self.settings, gh)
+                self.assertFalse(any(call[0] == "release" for call in gh.calls))
+
+    def test_publish_exists_ours(self) -> None:
+        """A re-run after a creation that succeeded passes, without changes.
+
+        The body may have CRLF line endings, and its generated part may
+        differ (e.g., after a change of the previous tag).
+        """
+        for old in [
+            publish.body(CURATED, GENERATED)[0].replace("\n", "\r\n"),
+            publish.body(CURATED, "**Full Changelog**: other")[0],
+            CURATED,
+        ]:
+            with self.subTest(old=old):
+                releases = [_release("v1.1.0"), _release("v1.2.0", body=old)]
+                gh = FakeGh(releases=releases)
+                stderr = io.StringIO()
+                with redirect_stderr(stderr):
+                    result = publish.publish(self.settings, gh)
+                url = "https://github.com/o/r/releases/tag/v1.2.0"
+                self.assertEqual(result, (old, url))
+                self.assertFalse(any(call[0] == "release" for call in gh.calls))
+                self.assertIn(
+                    "::notice::The release v1.2.0 exists already", stderr.getvalue()
+                )
 
     def test_publish_missing_tags(self) -> None:
         """A missing tag or previous tag fails before notes are generated."""
-        for tag, previous, message in [
-            ("v1.3.0", "", "The tag v1.3.0 doesn't exist"),
-            ("v1.2.0", "v1.0.5", "The previous tag v1.0.5 doesn't exist"),
-        ]:
-            with self.subTest(tag=tag, previous=previous):
+        for (tag, previous, message), check_only in itertools.product(
+            [
+                ("v1.3.0", "", "The tag v1.3.0 doesn't exist"),
+                ("v1.2.0", "v1.0.5", "The previous tag v1.0.5 doesn't exist"),
+            ],
+            (False, True),
+        ):
+            with self.subTest(tag=tag, previous=previous, check_only=check_only):
                 gh = FakeGh()
                 settings = publish.Settings(
-                    repository="o/r", tag=tag, notes=self.notes, previous=previous
+                    repository="o/r",
+                    tag=tag,
+                    notes=self.notes,
+                    previous=previous,
+                    check_only=check_only,
                 )
                 with self.assertRaisesRegex(publish.ReleaseError, message):
                     publish.publish(settings, gh)
@@ -619,11 +660,17 @@ class TestPublish(unittest.TestCase):
 
     def test_publish_no_version(self) -> None:
         """`auto` fails for tags that are no versions, before any call."""
-        for tag, policy in [("nightly", "auto"), ("v1.2.0", "yes")]:
-            with self.subTest(tag=tag, policy=policy):
+        for (tag, policy), check_only in itertools.product(
+            [("nightly", "auto"), ("v1.2.0", "yes")], (False, True)
+        ):
+            with self.subTest(tag=tag, policy=policy, check_only=check_only):
                 gh = FakeGh()
                 settings = publish.Settings(
-                    repository="o/r", tag=tag, notes=self.notes, prerelease=policy
+                    repository="o/r",
+                    tag=tag,
+                    notes=self.notes,
+                    prerelease=policy,
+                    check_only=check_only,
                 )
                 with self.assertRaises(publish.ReleaseError):
                     publish.publish(settings, gh)

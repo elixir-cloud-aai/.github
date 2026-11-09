@@ -644,6 +644,35 @@ def read_notes(path: Path) -> str:
     return curated
 
 
+def _is_ours(
+    release: Release, settings: Settings, curated: str, prerelease: bool
+) -> bool:
+    """Return whether an existing release is the one these settings create.
+
+    The generated part of the body isn't compared, as it may differ on a
+    re-run (e.g., if a release published since changes the previous tag).
+
+    Args:
+        release: The existing release (as the REST API lists it).
+        settings: Settings of the release.
+        curated: Curated notes of the release.
+        prerelease: Whether the release is a pre-release.
+
+    Returns:
+        Whether the release's body starts with the curated notes (followed
+        by nothing or a blank line), and its title and pre-release flag are
+        those of the settings.
+    """
+    text = str(release.get("body") or "").replace("\r\n", "\n").strip()
+    notes = curated.removeprefix("﻿").strip()
+    return (
+        text.startswith(notes)
+        and (text == notes or text[len(notes) :].startswith("\n\n"))
+        and release.get("name") == (settings.title or settings.tag)
+        and bool(release.get("prerelease")) is prerelease
+    )
+
+
 def publish(settings: Settings, gh: Runner = _gh) -> tuple[str, str]:
     """Create the GitHub release of a tag, with curated and generated notes.
 
@@ -663,7 +692,8 @@ def publish(settings: Settings, gh: Runner = _gh) -> tuple[str, str]:
         ReleaseError: If the notes have findings, the pre-release policy
             doesn't apply, the tag or the previous tag doesn't exist, or a
             release (or a draft) of the tag exists already, unless it is a
-            published release with the same body (e.g., when a job is re-run
+            published release with these curated notes, title and pre-release
+            flag (see `_is_ours`; e.g., when a job is re-run
             after a creation that succeeded but wasn't reported); or if `gh`
             fails.
     """
@@ -710,16 +740,19 @@ def publish(settings: Settings, gh: Runner = _gh) -> tuple[str, str]:
     for warning in warnings:
         print(f"::warning::{warning}; kept as they are", file=sys.stderr)
     if existing:
-        if str(existing[0].get("body") or "").strip() == text.strip():
+        release = existing[0]
+        if _is_ours(release, settings, curated, prerelease):
             print(
-                f"::notice::The release {settings.tag} exists already, with this"
-                " body (created by an earlier attempt)",
+                f"::notice::The release {settings.tag} exists already, with these"
+                " curated notes, title and pre-release flag (created by an"
+                " earlier attempt)",
                 file=sys.stderr,
             )
-            return text, str(existing[0].get("html_url") or "")
+            return str(release.get("body") or ""), str(release.get("html_url") or "")
         raise ReleaseError(
-            f"The release {settings.tag} exists already, with another body:"
-            " releases are not changed or replaced, so release the next version"
+            f"The release {settings.tag} exists already, with other notes, title"
+            " or pre-release flag: releases are not changed or replaced, so"
+            " release the next version"
         )
     latest = is_latest(settings.tag, prerelease, releases)
     with tempfile.NamedTemporaryFile(

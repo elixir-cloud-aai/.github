@@ -117,10 +117,12 @@ appears only once everything it announces exists.
   action fails before it generates notes: delete the draft (e.g., of a
   failed attempt) and re-run. If a published release of the tag exists,
   `check-only` fails (release the next version); creating it passes without
-  changes only if the release has the same body (e.g., when the job is
-  re-run after a creation that succeeded but wasn't reported), and fails
-  otherwise. Published releases are never changed (with immutable releases,
-  they can't be).
+  changes only if the release's body starts with the curated notes and it
+  has the same title and pre-release flag (e.g., when the job is re-run
+  after a creation that succeeded but wasn't reported; the generated part
+  may differ by then), and fails otherwise. So re-run only the failed jobs:
+  re-running `prepare` too fails there, as the release exists. Published
+  releases are never changed (with immutable releases, they can't be).
 - **Latest release:** a pre-release is never the latest release; a release
   is the latest unless a published release (not a pre-release) has a
   higher version, e.g., for a patch of an older line. For tags that are no
