@@ -122,6 +122,49 @@ jobs:
             echo "::error::Expected the check of the failing results to fail, got ${OUTCOME}"
             exit 1
           fi
+      # publish-release: the script (notes check, body, versions, calls of
+      # `gh` against a stand-in)
+      - name: Test publish-release script
+        run: bash tests/publish-release/test.sh
+      # publish-release: the action itself, in check-only mode against this
+      # repository (creating a release needs `contents: write` and a new
+      # tag; this repository has no tag without a release). Good notes pass
+      # the offline check; bad notes, and a tag whose release exists
+      # (v1.0.0), fail the action
+      - name: Prepare release notes to check
+        run: |
+          mkdir -p "${RUNNER_TEMP}/notes"
+          printf 'Intro.\n\n## Fixes\n\n- A fix (#1, #2)\n' \
+            > "${RUNNER_TEMP}/notes/good.md"
+          printf 'Intro.\n\n## Commits\n\n- A fix (#1, #2)\n' \
+            > "${RUNNER_TEMP}/notes/bad.md"
+      - name: Check good release notes offline
+        run: python3 -I actions/publish-release/publish.py check "${RUNNER_TEMP}/notes/good.md"
+      - name: Check bad release notes
+        id: bad-notes
+        continue-on-error: true
+        uses: ./actions/publish-release
+        with:
+          notes: ${{ runner.temp }}/notes/bad.md
+          tag: v1.0.0
+          check-only: "true"
+      - name: Check a released tag
+        id: released-tag
+        continue-on-error: true
+        uses: ./actions/publish-release
+        with:
+          notes: ${{ runner.temp }}/notes/good.md
+          tag: v1.0.0
+          check-only: "true"
+      - name: Expect both checks to fail
+        env:
+          BAD_NOTES: ${{ steps.bad-notes.outcome }}
+          RELEASED_TAG: ${{ steps.released-tag.outcome }}
+        run: |
+          if [[ "${BAD_NOTES}" != failure || "${RELEASED_TAG}" != failure ]]; then
+            echo "::error::Expected both checks to fail, got ${BAD_NOTES} and ${RELEASED_TAG}"
+            exit 1
+          fi
       # scan-image: a clean image passes and yields the full report; an image
       # with fixable critical and high findings fails. No upload to code
       # scanning (the job has no `security-events: write`)
