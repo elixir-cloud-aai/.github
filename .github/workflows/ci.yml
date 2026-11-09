@@ -122,6 +122,64 @@ jobs:
             echo "::error::Expected the check of the failing results to fail, got ${OUTCOME}"
             exit 1
           fi
+      # publish-release: the script (notes check, body, versions, calls of
+      # `gh` against a stand-in)
+      - name: Test publish-release script
+        run: bash tests/publish-release/test.sh
+      # publish-release: check-only mode against this repository's real API
+      # (creating a release needs `contents: write` and a new tag). Depends
+      # on this repository's tags: v1.0.0 has a published release, and
+      # v0.0.0 doesn't exist. The script runs as the action runs it, so that
+      # each case can assert its error; the action itself runs once, for its
+      # wiring (inputs reaching the script)
+      - name: Check release notes and tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Not the fork's, which has other releases (public data)
+          GH_REPO: elixir-cloud-aai/.github
+          CHECK_ONLY: "true"
+        run: |
+          notes="${RUNNER_TEMP}/notes"
+          mkdir -p "${notes}"
+          printf 'Intro.\n\n## Fixes\n\n- A fix (#1, #2)\n' > "${notes}/good.md"
+          printf 'Intro.\n\n## Commits\n\n- A fix (#1, #2)\n' > "${notes}/bad.md"
+          python3 -I actions/publish-release/publish.py check "${notes}/good.md"
+          # <tag> <notes> <expected error>
+          expect() {
+            local out
+            if out="$(TAG="$1" NOTES="${notes}/$2" \
+              python3 -I actions/publish-release/publish.py publish 2>&1)"; then
+              echo "::error::Expected the check of $1 with $2 to fail"
+              exit 1
+            fi
+            if [[ "${out}" != *"$3"* ]]; then
+              echo "::error::Expected '$3', got: ${out}"
+              exit 1
+            fi
+          }
+          expect v1.0.0 bad.md "not in the format"
+          expect v1.0.0 good.md "exists already"
+          expect v0.0.0 good.md "The tag v0.0.0 doesn't exist"
+      # The action uses the run's repository: only here, not in forks
+      - name: Check a released tag with the action
+        id: released-tag
+        if: github.repository == 'elixir-cloud-aai/.github'
+        continue-on-error: true
+        uses: ./actions/publish-release
+        with:
+          notes: ${{ runner.temp }}/notes/good.md
+          tag: v1.0.0
+          prerelease: "false"
+          check-only: "true"
+      - name: Expect the check of the released tag to fail
+        if: github.repository == 'elixir-cloud-aai/.github'
+        env:
+          OUTCOME: ${{ steps.released-tag.outcome }}
+        run: |
+          if [[ "${OUTCOME}" != failure ]]; then
+            echo "::error::Expected the check of the released tag to fail, got ${OUTCOME}"
+            exit 1
+          fi
       # scan-image: a clean image passes and yields the full report; an image
       # with fixable critical and high findings fails. No upload to code
       # scanning (the job has no `security-events: write`)

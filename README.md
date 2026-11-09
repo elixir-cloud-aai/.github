@@ -111,6 +111,9 @@ and pin to the commit of a release:
 - [`gate`](actions/gate/README.md): checks the results of the jobs a CI gate
   needs.
 - [`pr-title`](actions/pr-title/README.md): checks pull request titles.
+- [`publish-release`](actions/publish-release/README.md): creates the
+  GitHub release of a tag with the curated notes followed by GitHub's
+  generated notes, the organisation's release notes format.
 - [`scan-image`](actions/scan-image/README.md): scans Docker images with
   Trivy.
 
@@ -127,7 +130,9 @@ hooks of `.pre-commit-config.yaml`: YAML syntax and GitHub's schemas (issue
 forms, workflows, actions, Dependabot), Markdown style (markdownlint),
 secrets (gitleaks), shell scripts (shellcheck) and the workflows
 (actionlint). Its `test` job runs the tests of the composite actions
-(`tests/<action>/test.sh`), the actions themselves and the tests of the
+(`tests/<action>/test.sh`; those of `publish-release` use Python's
+`unittest`, as its script uses the standard library only), the actions
+themselves and the tests of the
 release scripts (`tests/release/test.sh`). Run them locally before you push:
 
 ```sh
@@ -137,6 +142,7 @@ pre-commit run --all-files
 pre-commit run --all-files --hook-stage manual gitleaks-all
 bash tests/pr-title/test.sh
 bash tests/gate/test.sh
+bash tests/publish-release/test.sh
 bash tests/release/test.sh
 ```
 

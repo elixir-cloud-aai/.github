@@ -1,0 +1,81 @@
+---
+# Called from the release workflow of each repository: in its `prepare` job
+# with `check-only: "true"`, to check the curated notes, the settings and the
+# repository (tags, existing releases) before anything is published, and in
+# its last job (`publish`, "Publish release"), after the artefacts are
+# published, to create the GitHub release of the tag with the curated notes
+# followed by GitHub's generated notes. See the README of this action
+name: Publish release
+description: >-
+  Create the GitHub release of a tag in the organisation's format: the
+  curated notes, then GitHub's generated notes; or only check that it can be
+  created.
+inputs:
+  notes:
+    description: >-
+      Path of the curated notes (intro and sections), e.g.,
+      `docs/releases/1.2.0.md`.
+    required: true
+  tag:
+    description: >-
+      Tag of the release; it must exist on GitHub. Default is the tag of the
+      workflow run.
+    required: false
+    default: ${{ github.ref_name }}
+  prerelease:
+    description: >-
+      Whether the release is a pre-release: `auto` (below 1.0.0 or an `a`,
+      `b` or `rc` version), `true` or `false`.
+    required: false
+    default: auto
+  previous-tag:
+    description: >-
+      Tag that GitHub's generated notes start from. Default is the highest
+      lower version with a published release, else the highest lower version
+      tag (for a final release, not its own pre-releases).
+    required: false
+    default: ""
+  commit:
+    description: >-
+      Commit SHA that the tag must point to (e.g., the one the artefacts were
+      built from). Default is no check.
+    required: false
+    default: ""
+  title:
+    description: Title of the release. Default is the tag.
+    required: false
+    default: ""
+  check-only:
+    description: >-
+      `true` to only check that the release can be created, `false` to
+      create it.
+    required: false
+    default: "false"
+  token:
+    description: >-
+      Token for the GitHub API; needs `contents: write` unless `check-only`
+      is `true` (then `contents: read`).
+    required: false
+    default: ${{ github.token }}
+outputs:
+  url:
+    description: URL of the created release (empty with `check-only`).
+    value: ${{ steps.publish.outputs.url }}
+runs:
+  using: composite
+  steps:
+    - name: Publish release
+      id: publish
+      shell: bash
+      # Inputs go in through the environment, never into the script
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        GH_REPO: ${{ github.repository }}
+        TAG: ${{ inputs.tag }}
+        NOTES: ${{ inputs.notes }}
+        PRERELEASE: ${{ inputs.prerelease }}
+        PREVIOUS_TAG: ${{ inputs.previous-tag }}
+        TITLE: ${{ inputs.title }}
+        CHECK_ONLY: ${{ inputs.check-only }}
+        COMMIT: ${{ inputs.commit }}
+      run: python3 -I "${GITHUB_ACTION_PATH}/publish.py" publish
