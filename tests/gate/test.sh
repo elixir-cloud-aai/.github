@@ -31,6 +31,7 @@ expect() {
 ok='{"result":"success","outputs":{}}'
 expect pass "{\"lint\":${ok},\"test\":${ok}}"
 expect fail "{\"lint\":${ok},\"test\":{\"result\":\"failure\"}}" "" "test: failure"
+# Cancelled jobs fail the gate, whatever cancelled them (see the README)
 expect fail "{\"lint\":{\"result\":\"cancelled\"},\"test\":${ok}}" "" "lint: cancelled"
 expect pass "{\"lint\":${ok},\"push\":{\"result\":\"skipped\"}}" "push publish"
 # IDs on separate lines (e.g. a YAML block scalar)
@@ -63,6 +64,68 @@ elif ! grep -qx -- "- test: failure" "${summary}"; then
 else
   echo "ok: step summary"
 fi
+
+# The gate jobs of this repository's CI and of the README's example run
+# `always()` (not `!cancelled()`), and only a new head commit of a pull
+# request cancels runs in progress (see "Cancelled runs" in the README)
+# gate_if <file>: the job-level `if:` of the job `passed`
+gate_if() {
+  awk '
+    # The indent of the first non-blank character
+    { indent = match($0, /[^ ]/) }
+    /^ *passed:$/ { job = indent; next }
+    !job || !/^ *[^ #]/ { next }
+    indent <= job { exit }
+    # The indent of the job keys, from the first one
+    !key { key = indent }
+    indent == key && /^ *if:/ { sub(/^ *if: */, ""); print; exit }
+  ' "$1"
+}
+# The parser finds the job-level condition of `passed` only, not those of
+# other jobs, comments or steps
+fixture="$(mktemp)"
+trap 'rm -f "${summary}" "${fixture}"' EXIT
+printf 'jobs:\n  lint:\n    if: a\n  passed:\n    # if: b\n    needs: [lint]\n    if: c\n  next:\n    if: d\n' > "${fixture}"
+if [[ "$(gate_if "${fixture}")" == c ]]; then
+  echo "ok: gate condition parser"
+else
+  echo "NOT OK: gate condition parser: $(gate_if "${fixture}")"
+  failures=$((failures + 1))
+fi
+printf 'jobs:\n  passed:\n    steps:\n      - if: s\n        run: x\n  next:\n    if: d\n' > "${fixture}"
+if [[ -z "$(gate_if "${fixture}")" ]]; then
+  echo "ok: gate condition parser, no job-level condition"
+else
+  echo "NOT OK: gate condition parser took a step's or job's condition: $(gate_if "${fixture}")"
+  failures=$((failures + 1))
+fi
+# shellcheck disable=SC2016 # a GitHub expression, not a shell one
+cancel_expected='${{ github.event_name == '\''pull_request'\'' && github.event.action == '\''synchronize'\'' }}'
+for file in .github/workflows/ci.yml actions/gate/README.md; do
+  condition="$(gate_if "${file}")"
+  if [[ "${condition}" == "always()" ]]; then
+    echo "ok: gate condition in ${file}"
+  else
+    echo "NOT OK: gate condition in ${file}: ${condition@Q}"
+    failures=$((failures + 1))
+  fi
+done
+cancel="$(sed -n 's/^ *cancel-in-progress: *//p' .github/workflows/ci.yml)"
+# The README's example is the same, folded (`>-`) to fit the line length
+cancel_readme="$(awk '
+  /^ *cancel-in-progress: >-$/ { inside = 1; next }
+  inside && /^ +[^ ]/ { sub(/^ +/, ""); out = out (out ? " " : "") $0; next }
+  inside { exit }
+  END { print out }
+' actions/gate/README.md)"
+for pair in "ci.yml:${cancel}" "README.md:${cancel_readme}"; do
+  if [[ "${pair#*:}" == "${cancel_expected}" ]]; then
+    echo "ok: cancel-in-progress in ${pair%%:*}"
+  else
+    echo "NOT OK: cancel-in-progress in ${pair%%:*}: ${pair#*:}"
+    failures=$((failures + 1))
+  fi
+done
 
 if ((failures > 0)); then
   echo "${failures} test(s) failed"
