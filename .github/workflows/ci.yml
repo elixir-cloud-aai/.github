@@ -19,13 +19,14 @@ on:
 permissions:
   contents: read
 
-# Cancel superseded runs of a pull request, but only for a new head commit,
-# so that a newer run on the same commit doesn't leave a failed gate (see
+# Cancel superseded runs of a pull request, but only for a new head commit
+# (not for a rerun, which may be of an older commit), so that a newer run on
+# the same commit doesn't leave a failed gate (see
 # "Cancelled runs" in actions/gate/README.md); runs for pushes get their own
 # group, so that queued runs for successive pushes are not dropped
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' && github.run_attempt == 1 }}
 
 jobs:
   lint:

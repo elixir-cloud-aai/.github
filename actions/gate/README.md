@@ -49,7 +49,8 @@ concurrency:
     && github.sha || github.ref }}
   cancel-in-progress: >-
     ${{ github.event_name == 'pull_request'
-    && github.event.action == 'synchronize' }}
+    && github.event.action == 'synchronize'
+    && github.run_attempt == 1 }}
 ```
 
 ## Inputs
@@ -75,11 +76,14 @@ e.g. a run for editing the description, marking the pull request ready or
 reopening it (event `pull_request`, actions `edited`, `ready_for_review`,
 `reopened`): the cancelled run's failed gate is then the newest result on
 the commit until the newer run's gate reports, and stays so if it never
-does. Therefore only a new head commit (action
-`synchronize`) may cancel the runs of a pull request in progress
-(`cancel-in-progress` above); a run for another action waits until the run
-in progress has finished, and replaces a waiting one. A waiting run that is
-replaced never starts any job, so it leaves no `CI passed` at all.
+does. Therefore only a new head commit (action `synchronize`, first
+attempt) may cancel the runs of a pull request in progress
+(`cancel-in-progress` above). A rerun keeps the event of its run, and a
+rerun of an older commit's run must not cancel the run on the head commit,
+so reruns never cancel. A run for another action, or a rerun, waits until
+the run in progress has finished, and replaces a waiting one. A waiting
+run that is replaced never starts any job, so it leaves no `CI passed` at
+all.
 
 The gate job doesn't use `if: ${{ !cancelled() }}`, which would skip it in
 cancelled runs: GitHub counts a skipped required check as passed
@@ -88,9 +92,7 @@ checks](https://docs.github.com/en/pull-requests/collaborating-with-pull-request
 so a run cancelled by hand, or replaced by a newer run that hasn't reported
 yet, would allow the merge without tests.
 
-A run cancelled by hand, or by rerunning a run of an older commit (a rerun
-keeps its event, so it cancels the run in progress on the head commit),
-fails the gate: rerun the head commit's run, or push, before you merge.
+A run cancelled by hand fails the gate: rerun it, or push, before you merge.
 
 The price: after an event other than a push, e.g. marking a pull request
 ready, its result comes only after the run in progress and then a whole new

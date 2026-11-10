@@ -100,7 +100,7 @@ else
   failures=$((failures + 1))
 fi
 # shellcheck disable=SC2016 # a GitHub expression, not a shell one
-cancel_expected='${{ github.event_name == '\''pull_request'\'' && github.event.action == '\''synchronize'\'' }}'
+cancel_expected='${{ github.event_name == '\''pull_request'\'' && github.event.action == '\''synchronize'\'' && github.run_attempt == 1 }}'
 for file in .github/workflows/ci.yml actions/gate/README.md; do
   condition="$(gate_if "${file}")"
   if [[ "${condition}" == "always()" ]]; then
@@ -110,19 +110,36 @@ for file in .github/workflows/ci.yml actions/gate/README.md; do
     failures=$((failures + 1))
   fi
 done
-cancel="$(sed -n 's/^ *cancel-in-progress: *//p' .github/workflows/ci.yml)"
-# The README's example is the same, folded (`>-`) to fit the line length
-cancel_readme="$(awk '
-  /^ *cancel-in-progress: >-$/ { inside = 1; next }
-  inside && /^ +[^ ]/ { sub(/^ +/, ""); out = out (out ? " " : "") $0; next }
-  inside { exit }
-  END { print out }
-' actions/gate/README.md)"
-for pair in "ci.yml:${cancel}" "README.md:${cancel_readme}"; do
-  if [[ "${pair#*:}" == "${cancel_expected}" ]]; then
-    echo "ok: cancel-in-progress in ${pair%%:*}"
+# cancel_in_progress <file>: `cancel-in-progress` of the workflow-level
+# `concurrency` (not of a job's), also folded (`>-`) over several lines as
+# in the README
+cancel_in_progress() {
+  awk '
+    /^concurrency:/ { top = 1; next }
+    top && /^[^ ]/ { exit }
+    top && /^  cancel-in-progress:/ {
+      sub(/^  cancel-in-progress: */, "")
+      if ($0 != ">-") { print; exit }
+      folded = 1; next
+    }
+    folded && /^    [^ ]/ { sub(/^ +/, ""); out = out (out ? " " : "") $0; next }
+    folded { exit }
+    END { if (out) print out }
+  ' "$1"
+}
+printf 'concurrency:\n  group: g\njobs:\n  a:\n    concurrency:\n      cancel-in-progress: x\n' > "${fixture}"
+if [[ -z "$(cancel_in_progress "${fixture}")" ]]; then
+  echo "ok: cancel-in-progress parser, workflow level only"
+else
+  echo "NOT OK: cancel-in-progress parser took a job's setting"
+  failures=$((failures + 1))
+fi
+for file in .github/workflows/ci.yml actions/gate/README.md; do
+  cancel="$(cancel_in_progress "${file}")"
+  if [[ "${cancel}" == "${cancel_expected}" ]]; then
+    echo "ok: cancel-in-progress in ${file}"
   else
-    echo "NOT OK: cancel-in-progress in ${pair%%:*}: ${pair#*:}"
+    echo "NOT OK: cancel-in-progress in ${file}: ${cancel@Q}"
     failures=$((failures + 1))
   fi
 done
