@@ -7,7 +7,9 @@
 # `report` is true (weekly scan), a full report, findings without a fix
 # included, is uploaded as the workflow artifact `trivy-report-<category>`
 # (JSON and table), not to code scanning. Then the step fails on critical
-# and high findings that have a fix (unless `fail` is false). Accepted
+# and high findings that have a fix (unless `fail` is false). If
+# `fail-on-pip` is true, the step fails before that if the image contains
+# pip (installed as a Python or an OS package). Accepted
 # findings are listed in `.trivyignore.yaml` (of the checked-out commit) and
 # left out of all results. The job needs the `security-events: write`
 # permission to upload to code scanning. See README.md for usage.
@@ -31,6 +33,9 @@ inputs:
   fail:
     description: Fail on fixable critical and high findings ("true" or "false")
     default: "true"
+  fail-on-pip:
+    description: Fail if the image contains pip, as a Python or an OS package ("true" or "false")
+    default: "false"
   trivy-version:
     description: Version of the Trivy binary (not bumped by Dependabot)
     default: v0.75.0
@@ -82,6 +87,23 @@ runs:
           trivy-report.json
           trivy-report.txt
         if-no-files-found: error
+    - name: List packages of the image
+      if: inputs.fail-on-pip == 'true'
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      with:
+        image-ref: ${{ inputs.image }}
+        scanners: vuln
+        list-all-pkgs: "true"
+        format: json
+        output: trivy-packages.json
+        version: ${{ inputs.trivy-version }}
+        skip-setup-trivy: true
+    - name: Fail if the image contains pip
+      if: inputs.fail-on-pip == 'true'
+      shell: bash
+      env:
+        SCAN_PACKAGES: trivy-packages.json
+      run: bash "${GITHUB_ACTION_PATH}/check-pip.sh"
     - name: Fail on fixable critical and high findings
       if: inputs.fail == 'true'
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
