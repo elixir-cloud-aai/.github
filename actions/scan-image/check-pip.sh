@@ -43,8 +43,9 @@ if [[ -n "${found}" ]]; then
     {
       echo "### The image contains pip"
       echo
+      # As code, so that the image's metadata isn't rendered as Markdown
       while IFS= read -r line; do
-        echo "- ${line}"
+        echo "- \`${line//\`/}\`"
       done <<< "${found}"
       echo
       echo "Remove pip from the image (e.g., install packages with uv), or"

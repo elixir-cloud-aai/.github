@@ -115,7 +115,7 @@ if SCAN_PACKAGES="$(report "[$(os_pkgs '[{"Name": "py3-pip", "Version": "25.1"}]
   GITHUB_STEP_SUMMARY="${summary}" bash "${check}" >/dev/null 2>&1; then
   echo "NOT OK: expected fail with a step summary"
   failures=$((failures + 1))
-elif ! grep -q -- "- py3-pip 25.1" "${summary}"; then
+elif ! grep -qF -- "- \`py3-pip 25.1 (my-app:ci (debian 13.1))\`" "${summary}"; then
   echo "NOT OK: step summary lacks the package: $(cat "${summary}")"
   failures=$((failures + 1))
 else

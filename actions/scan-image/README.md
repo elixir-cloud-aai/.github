@@ -81,7 +81,7 @@ e.g., through a new base image or an install step, set `fail-on-pip` to
 The check lists all packages of the image with Trivy and fails if pip is
 among them:
 
-- as a Python package, i.e., a `pip-*.dist-info` anywhere in the image
+- as a Python package, e.g., a `pip-*.dist-info` anywhere in the image
   (site-packages of the system Python, of a virtual environment or of a
   user installation), or as a conda package;
 - as an OS package: `pip`, `py*-pip` or `python*-pip` (e.g., `python3-pip`
