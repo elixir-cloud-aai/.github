@@ -142,7 +142,9 @@ pre-commit run --all-files
 pre-commit run --all-files --hook-stage manual gitleaks-all
 bash tests/pr-title/test.sh
 bash tests/gate/test.sh
+bash tests/labels/test.sh
 bash tests/publish-release/test.sh
+bash tests/scan-image/test.sh
 bash tests/release/test.sh
 ```
 

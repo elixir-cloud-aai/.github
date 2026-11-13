@@ -1,0 +1,30 @@
+{
+  "SchemaVersion": 2,
+  "ArtifactName": "fixture-alpine-py3-pip",
+  "ArtifactType": "container_image",
+  "Results": [
+    {
+      "Target": "pip-os-test:latest (alpine 3.22.8)",
+      "Class": "os-pkgs",
+      "Type": "alpine",
+      "Packages": [
+        {
+          "Name": "alpine-baselayout",
+          "Version": "3.7.0-r0"
+        },
+        {
+          "Name": "alpine-baselayout-data",
+          "Version": "3.7.0-r0"
+        },
+        {
+          "Name": "py3-pip",
+          "Version": "25.1.1-r0"
+        },
+        {
+          "Name": "py3-pip-pyc",
+          "Version": "25.1.1-r0"
+        }
+      ]
+    }
+  ]
+}

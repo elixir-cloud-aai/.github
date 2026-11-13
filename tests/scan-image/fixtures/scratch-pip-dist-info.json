@@ -1,0 +1,19 @@
+{
+  "SchemaVersion": 2,
+  "ArtifactName": "fixture-scratch-pip-dist-info",
+  "ArtifactType": "container_image",
+  "Results": [
+    {
+      "Target": "Python",
+      "Class": "lang-pkgs",
+      "Type": "python-pkg",
+      "Packages": [
+        {
+          "Name": "pip",
+          "Version": "26.0",
+          "FilePath": "usr/local/lib/python3.13/site-packages/pip-26.0.dist-info/METADATA"
+        }
+      ]
+    }
+  ]
+}

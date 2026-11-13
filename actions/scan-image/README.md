@@ -63,9 +63,9 @@ steps:
 
 ## pip in images
 
-pip brings vendored packages that image scans flag, and app images don't
-need it at runtime: install the packages with [uv](https://docs.astral.sh/uv/)
-instead (as FOCA's image does since 0.20.0). To keep pip from coming back,
+pip brings vendored packages that image scans flag, and app images rarely
+need it at runtime: install the packages with
+[uv](https://docs.astral.sh/uv/) instead. To keep pip from coming back,
 e.g., through a new base image or an install step, set `fail-on-pip` to
 `true` once an image is free of it:
 
@@ -78,34 +78,34 @@ e.g., through a new base image or an install step, set `fail-on-pip` to
     fail-on-pip: "true"
 ```
 
-The check lists all packages of the image with Trivy (written to
-`trivy-packages.json` in the workspace) and fails if pip is among them:
+The check lists all packages of the image with Trivy and fails if pip is
+among them:
 
-- as an installed Python package, i.e., a `pip-*.dist-info` anywhere in the
-  image (site-packages of the system Python, of a virtual environment or of
-  a user installation), or a conda package;
-- as an OS package, e.g., `python3-pip` (Debian, Ubuntu, Fedora) or
-  `py3-pip` (Alpine); the wheel-only `python3-pip-whl` that Debian's `venv`
-  module needs doesn't count.
+- as a Python package, i.e., a `pip-*.dist-info` anywhere in the image
+  (site-packages of the system Python, of a virtual environment or of a
+  user installation), or as a conda package;
+- as an OS package: `pip`, `py*-pip` or `python*-pip` (e.g., `python3-pip`
+  on Debian and Ubuntu, `py3-pip` on Alpine, `py3.13-pip` on Wolfi,
+  `python3.12-pip` on Fedora), also with the prefix `platform-` (RHEL 8);
+  packages that only ship pip's wheel or bytecode, such as Debian's
+  `python3-pip-whl` (which the `venv` module needs) or Alpine's
+  `py3-pip-pyc`, don't count.
 
-A `pip` executable without its package can't run, so the check doesn't look
-for one on the `PATH`. Wheels of pip that aren't installed (e.g., the one
-that `ensurepip` bundles) don't count either. The check fails before the
-check of the findings, so a scan with pip shows only that failure; the
-log and the step summary list the packages found.
+Not found: pip's zipapp (`pip.pyz`) and other copies of pip that aren't
+installed as a package, e.g., the wheel that `ensurepip` bundles. The check
+fails before the check of the findings, so a scan with pip shows only that
+failure; the log and the step summary list the packages found. The package
+list stays in the workspace as `trivy-packages.json` (it isn't uploaded).
 
 The default is `false`, so that callers keep passing when they bump the pin
-and turn the check on per image. The published images of the latest
-releases that contain pip (checked on 2026-11-13) are those of
-`cloud-registry` and `pubgrade-updater` (from `Pubgrade`); the images of
-`foca`, `protes`, `trs-filer`, `pubgrade`, `pubgrade-sidecar`, `tesk-api`
-and `tesk-core` (taskmaster and filer) contain none, so their scans can turn
-the check on now.
+and can turn the check on one image at a time.
 
 ## Tests
 
-The `test` job of this repository's CI tests the pip check on Trivy reports
-(`tests/scan-image/test.sh`), and scans a clean image (and checks the full
-report and the package list, with `fail-on-pip`), an image with fixable
-findings and an image with pip (and expects the step to fail in both
-cases).
+The `test` job of this repository's CI tests the pip check on made-up
+Trivy reports and on reports cut down from real scans
+(`tests/scan-image/test.sh`, `tests/scan-image/fixtures/`), and scans a
+clean image (and checks the full report and the package list, with
+`fail-on-pip`), an image with fixable findings (and expects the step to
+fail) and an image with pip (which passes by default and fails with
+`fail-on-pip`).
