@@ -83,7 +83,7 @@ The check lists all packages of the image with Trivy (written to
 
 - as an installed Python package, i.e., a `pip-*.dist-info` anywhere in the
   image (site-packages of the system Python, of a virtual environment or of
-  a user installation);
+  a user installation), or a conda package;
 - as an OS package, e.g., `python3-pip` (Debian, Ubuntu, Fedora) or
   `py3-pip` (Alpine); the wheel-only `python3-pip-whl` that Debian's `venv`
   module needs doesn't count.

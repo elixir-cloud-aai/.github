@@ -59,6 +59,9 @@ expect fail "pip as a Python package" "$(report "[$(python_pkgs \
   "The image contains pip: pip 26.0 (${site}/pip-26.0.dist-info/METADATA)"
 expect fail "pip as a Python package, other case" "$(report "[$(python_pkgs \
   '[{"Name": "Pip", "Version": "26.0"}]')]")" "Pip 26.0 (Python)"
+expect fail "pip as a conda package" "$(report \
+  '[{"Target": "Conda", "Class": "lang-pkgs", "Type": "conda-pkg", "Packages": [{"Name": "pip", "Version": "25.0"}]}]')" \
+  "pip 25.0 (Conda)"
 # Packages of other ecosystems named pip aren't Python's pip
 expect pass "a package named pip of another ecosystem" "$(report \
   '[{"Target": "package-lock.json", "Class": "lang-pkgs", "Type": "npm", "Packages": [{"Name": "pip"}]}]')"

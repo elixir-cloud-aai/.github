@@ -2,8 +2,8 @@
 # Checks that an image doesn't contain pip. Input in the environment:
 # SCAN_PACKAGES, the path of Trivy's JSON report of the image with all
 # packages listed (`--list-all-pkgs`). Fails if the report lists pip as an
-# installed Python package (a `pip-*.dist-info` anywhere in the image) or as
-# an OS package (`python3-pip`, `py3-pip` and the like; not the wheel-only
+# installed Python package (a `pip-*.dist-info` anywhere in the image, or a
+# conda package) or as an OS package (`python3-pip`, `py3-pip` and the like; not the wheel-only
 # `python3-pip-whl`), and if the report can't be read; lists the packages
 # found in the log and, if available, the step summary
 set -euo pipefail
@@ -21,7 +21,8 @@ found="$(jq -r '
     | . as $result
     | .Packages[]?
     | select(
-        (($result.Class == "lang-pkgs" and $result.Type == "python-pkg")
+        (($result.Class == "lang-pkgs"
+            and ($result.Type | IN("python-pkg", "conda-pkg")))
           and ((.Name // "") | ascii_downcase) == "pip")
         or ($result.Class == "os-pkgs"
           and ((.Name // "") | ascii_downcase
