@@ -183,14 +183,27 @@ jobs:
             echo "::error::Expected the check of the released tag to fail, got ${OUTCOME}"
             exit 1
           fi
-      # scan-image: a clean image passes and yields the full report; an image
-      # with fixable critical and high findings fails. No upload to code
-      # scanning (the job has no `security-events: write`)
+      # scan-image: the pip check (`check-pip.sh`), on made-up reports and
+      # on reports cut down from real Trivy scans
+      - name: Test scan-image pip check
+        run: bash tests/scan-image/test.sh
+      # scan-image: a clean image passes (also the pip check) and yields the
+      # full report; an image with fixable critical and high findings fails;
+      # an image with pip (here only its `.dist-info`) passes by default and
+      # fails if `fail-on-pip` is true. No upload to code scanning (the job
+      # has no `security-events: write`)
       - name: Prepare images to scan
         run: |
           printf 'vulnerabilities: []\n' > .trivyignore.yaml
           printf 'FROM scratch\nCOPY .trivyignore.yaml /\n' \
             | docker build --tag scan-image-test:clean --file - .
+          pip_context="${RUNNER_TEMP}/pip-image"
+          mkdir -p "${pip_context}/pip-26.0.dist-info"
+          printf 'Metadata-Version: 2.1\nName: pip\nVersion: 26.0\n' \
+            > "${pip_context}/pip-26.0.dist-info/METADATA"
+          printf 'FROM scratch\nCOPY pip-26.0.dist-info %s\n' \
+            /usr/local/lib/python3.13/site-packages/pip-26.0.dist-info \
+            | docker build --tag scan-image-test:pip --file - "${pip_context}"
           docker pull alpine:3.10.0
       - name: Scan a clean image
         uses: ./actions/scan-image
@@ -199,9 +212,11 @@ jobs:
           category: test-clean
           upload: "false"
           report: "true"
-      - name: Expect the full report
+          fail-on-pip: "true"
+      - name: Expect the full report and the package list
         run: |
           jq -e '.ArtifactName == "scan-image-test:clean"' trivy-report.json
+          jq -e '.ArtifactName == "scan-image-test:clean"' trivy-packages.json
           test -s trivy-results.sarif
           test -s trivy-report.txt
       - name: Scan an image with fixable findings
@@ -222,6 +237,40 @@ jobs:
           fi
           # Failed because of findings, not before the scan
           jq -e '[.runs[].results[]] | length > 0' trivy-results.sarif
+      # The check is off by default: no failure, and the package list of the
+      # clean image is removed
+      - name: Scan an image with pip (check off)
+        uses: ./actions/scan-image
+        with:
+          image: scan-image-test:pip
+          category: test-pip-default
+          upload: "false"
+          # Not to depend on pip 26.0 staying free of fixable findings
+          fail: "false"
+      - name: Expect no package list
+        run: test ! -e trivy-packages.json
+      # Only the pip check can fail this scan (`fail` is false)
+      - name: Scan an image with pip
+        id: pip-image
+        continue-on-error: true
+        uses: ./actions/scan-image
+        with:
+          image: scan-image-test:pip
+          category: test-pip
+          upload: "false"
+          fail: "false"
+          fail-on-pip: "true"
+      - name: Expect the scan of the image with pip to fail
+        env:
+          OUTCOME: ${{ steps.pip-image.outcome }}
+        run: |
+          if [[ "${OUTCOME}" != failure ]]; then
+            echo "::error::Expected the scan of the image with pip to fail, got ${OUTCOME}"
+            exit 1
+          fi
+          # Failed because of pip, not before the package list
+          jq -e '[.Results[]?.Packages[]? | select(.Name == "pip")] | length > 0' \
+            trivy-packages.json
 
   passed:
     name: CI passed
