@@ -108,6 +108,14 @@ expect fail "no report" "" "No package list"
 expect fail "a missing report" "${tmp}/missing" "No package list"
 expect fail "a report that isn't JSON" "$(raw 'not JSON')" "No package list"
 expect fail "a report that isn't Trivy's" "$(raw '[]')" "No package list"
+expect fail "results that aren't an array" \
+  "$(raw '{"ArtifactName": "my-app:ci", "Results": {"Packages": [{"Name": "pip"}]}}')" \
+  "No package list"
+expect fail "packages that aren't an array" "$(report "[$(python_pkgs '{"Name": "pip"}')]")" \
+  "No package list"
+expect fail "a package that isn't an object" "$(report "[$(python_pkgs '["pip"]')]")" \
+  "No package list"
+expect fail "a result that isn't an object" "$(report '["pip"]')" "No package list"
 
 # The step summary lists the packages found
 summary="${tmp}/summary"

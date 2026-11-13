@@ -87,6 +87,10 @@ runs:
           trivy-report.json
           trivy-report.txt
         if-no-files-found: error
+    # Not to leave the package list of an earlier scan in the workspace
+    - name: Remove an earlier package list
+      shell: bash
+      run: rm -f trivy-packages.json
     - name: List packages of the image
       if: inputs.fail-on-pip == 'true'
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0

@@ -237,9 +237,8 @@ jobs:
           fi
           # Failed because of findings, not before the scan
           jq -e '[.runs[].results[]] | length > 0' trivy-results.sarif
-      # The check is off by default: no package list, no failure
-      - name: Remove the package list of the clean image
-        run: rm trivy-packages.json
+      # The check is off by default: no failure, and the package list of the
+      # clean image is removed
       - name: Scan an image with pip (check off)
         uses: ./actions/scan-image
         with:

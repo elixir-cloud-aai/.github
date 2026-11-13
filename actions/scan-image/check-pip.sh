@@ -9,8 +9,20 @@ set -euo pipefail
 
 report="${SCAN_PACKAGES:-}"
 
+if ! command -v jq >/dev/null; then
+  echo "::error title=Scan image::The pip check needs jq on the runner"
+  exit 1
+fi
+
+# A Trivy report: results and their packages are absent, null or arrays
+# (anything else could hide packages from the check below)
 if [[ -z "${report}" || ! -f "${report}" ]] \
-  || ! jq -e 'type == "object" and has("ArtifactName")' "${report}" \
+  || ! jq -e '
+    type == "object" and has("ArtifactName")
+    and (.Results | type | IN("null", "array"))
+    and all(.Results[]?;
+      type == "object" and (.Packages | type | IN("null", "array"))
+      and all(.Packages[]?; type == "object"))' "${report}" \
     >/dev/null 2>&1; then
   echo "::error title=Scan image::No package list of the image to check for pip"
   exit 1

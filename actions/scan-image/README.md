@@ -95,7 +95,9 @@ Not found: pip's zipapp (`pip.pyz`) and other copies of pip that aren't
 installed as a package, e.g., the wheel that `ensurepip` bundles. The check
 fails before the check of the findings, so a scan with pip shows only that
 failure; the log and the step summary list the packages found. The package
-list stays in the workspace as `trivy-packages.json` (it isn't uploaded).
+list stays in the workspace as `trivy-packages.json` (it isn't uploaded;
+the action removes the file at the start of the check, also when the check
+is off). The check needs `jq` on the runner, as GitHub-hosted runners have.
 
 The default is `false`, so that callers keep passing when they bump the pin
 and can turn the check on one image at a time.
