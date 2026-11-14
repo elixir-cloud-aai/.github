@@ -15,6 +15,7 @@ repositories:
   - docs
   - foca
   - foca-plugins
+  - krini
   - landing-page
   - proTES
   - Pubgrade
