@@ -743,7 +743,7 @@ def _is_ours(
 
 
 def _sha256(path: Path) -> str:
-    """Return the SHA-256 of a file.
+    """Return the SHA-256 of a file, read in chunks (assets may be large).
 
     Args:
         path: Path of the file.
@@ -751,7 +751,11 @@ def _sha256(path: Path) -> str:
     Returns:
         The hexadecimal digest.
     """
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _start(settings: Settings, releases: list[Release], tags: list[str]) -> str:
@@ -805,9 +809,10 @@ def publish(settings: Settings, gh: Runner = _gh) -> tuple[str, str]:
             doesn't point to `commit`, the previous tag isn't lower, or a
             release (or a draft) of the tag exists already, unless it is a
             published release with these curated notes, title and pre-release
-            flag (see `_is_ours`; e.g., when a job is re-run
-            after a creation that succeeded but wasn't reported); or if `gh`
-            fails.
+            flag, and with the assets (by name, and by digest where GitHub
+            reports one; see `_is_ours`; e.g., when a job is re-run after a
+            creation that succeeded but wasn't reported); if an asset is
+            invalid (see `check_assets`); or if `gh` fails.
     """
     curated = read_notes(settings.notes)
     if not settings.check_only:
