@@ -51,6 +51,14 @@ inputs:
       create it.
     required: false
     default: "false"
+  assets:
+    description: >-
+      Files to attach to the release, one path per line, relative to the
+      workspace; the release is created as a draft, gets the files and is
+      published last (also for immutable releases). Default is none. Not
+      checked or used with `check-only`.
+    required: false
+    default: ""
   token:
     description: >-
       Token for the GitHub API; needs `contents: write` unless `check-only`
@@ -78,4 +86,5 @@ runs:
         TITLE: ${{ inputs.title }}
         CHECK_ONLY: ${{ inputs.check-only }}
         COMMIT: ${{ inputs.commit }}
+        ASSETS: ${{ inputs.assets }}
       run: python3 -I "${GITHUB_ACTION_PATH}/publish.py" publish

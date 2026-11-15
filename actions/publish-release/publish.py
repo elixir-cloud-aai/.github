@@ -33,6 +33,7 @@ action runs on GitHub-hosted Linux runners without installing anything.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -92,6 +93,9 @@ RELATIVE = re.compile(
 )
 # Marks of unfinished notes
 TODO = re.compile(r"\b(?:TODO|FIXME)\b")
+# Asset names that GitHub keeps as they are (it renames others, e.g., with
+# spaces or a leading dot), so that a re-run finds them by name
+ASSET_NAME = re.compile(r"[A-Za-z0-9_-](?:[A-Za-z0-9._-]*[A-Za-z0-9_-])?")
 RELATIVE_LINK = (
     "Relative link (e.g., to a page of the docs): it doesn't resolve in the"
     " GitHub release, so link absolutely (https://...)"
@@ -580,6 +584,9 @@ class Settings:
             or false).
         commit: Commit that the tag must point to (`COMMIT`); empty for no
             check.
+        assets: Files to attach to the release (`ASSETS`: one path per
+            line, blank lines skipped); not checked or used with
+            `check_only`.
     """
 
     repository: str
@@ -590,6 +597,7 @@ class Settings:
     title: str = ""
     check_only: bool = False
     commit: str = ""
+    assets: tuple[Path, ...] = ()
 
     @classmethod
     def from_env(cls, env: dict[str, str]) -> Settings:
@@ -622,7 +630,45 @@ class Settings:
             prerelease=env.get("PRERELEASE") or "auto",
             previous=env.get("PREVIOUS_TAG", ""),
             title=env.get("TITLE", ""),
+            assets=tuple(
+                Path(line.strip())
+                for line in env.get("ASSETS", "").splitlines()
+                if line.strip()
+            ),
         )
+
+
+def check_assets(assets: Sequence[Path]) -> None:
+    """Check the files to attach to a release.
+
+    Args:
+        assets: Paths of the files.
+
+    Raises:
+        ReleaseError: If a path has a `#` (which `gh` reads as the start of
+            a display label), a file name that GitHub would rename (see
+            `ASSET_NAME`), isn't a regular file, or two files have the same
+            name (GitHub names assets after their file name).
+    """
+    names: set[str] = set()
+    for path in assets:
+        if "#" in str(path):
+            raise ReleaseError(
+                f"The asset {path} has a '#', which gh reads as a label: rename it"
+            )
+        if not ASSET_NAME.fullmatch(path.name):
+            raise ReleaseError(
+                f"The asset {path} has a name that GitHub would change: use ASCII"
+                " letters, digits, '.', '_' and '-' only, not starting or"
+                " ending with '.'"
+            )
+        if not path.is_file():
+            raise ReleaseError(f"The asset {path} is not a file")
+        if path.name in names:
+            raise ReleaseError(
+                f"Two assets have the same name {path.name}: rename one of them"
+            )
+        names.add(path.name)
 
 
 def read_notes(path: Path) -> str:
@@ -672,17 +718,44 @@ def _is_ours(
 
     Returns:
         Whether the release's body starts with the curated notes (followed
-        by nothing or a blank line), and its title and pre-release flag are
-        those of the settings.
+        by nothing or a blank line), its title and pre-release flag are
+        those of the settings, and it has an asset with the name of each of
+        the settings' assets, with the same SHA-256 (if GitHub reports the
+        asset's `digest`).
     """
     text = str(release.get("body") or "").replace("\r\n", "\n").strip()
     notes = curated.removeprefix("﻿").strip()
+    digests = {
+        str(asset.get("name")): str(asset.get("digest") or "")
+        for asset in release.get("assets") or []
+    }
     return (
         text.startswith(notes)
         and (text == notes or text[len(notes) :].startswith("\n\n"))
         and release.get("name") == (settings.title or settings.tag)
         and bool(release.get("prerelease")) is prerelease
+        and all(
+            path.name in digests
+            and digests[path.name] in ("", f"sha256:{_sha256(path)}")
+            for path in settings.assets
+        )
     )
+
+
+def _sha256(path: Path) -> str:
+    """Return the SHA-256 of a file, read in chunks (assets may be large).
+
+    Args:
+        path: Path of the file.
+
+    Returns:
+        The hexadecimal digest.
+    """
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _start(settings: Settings, releases: list[Release], tags: list[str]) -> str:
@@ -736,11 +809,14 @@ def publish(settings: Settings, gh: Runner = _gh) -> tuple[str, str]:
             doesn't point to `commit`, the previous tag isn't lower, or a
             release (or a draft) of the tag exists already, unless it is a
             published release with these curated notes, title and pre-release
-            flag (see `_is_ours`; e.g., when a job is re-run
-            after a creation that succeeded but wasn't reported); or if `gh`
-            fails.
+            flag, and with the assets (by name, and by digest where GitHub
+            reports one; see `_is_ours`; e.g., when a job is re-run after a
+            creation that succeeded but wasn't reported); if an asset is
+            invalid (see `check_assets`); or if `gh` fails.
     """
     curated = read_notes(settings.notes)
+    if not settings.check_only:
+        check_assets(settings.assets)
     prerelease = is_prerelease(settings.tag, settings.prerelease)
     repo = settings.repository
     pages = json.loads(
@@ -792,9 +868,9 @@ def publish(settings: Settings, gh: Runner = _gh) -> tuple[str, str]:
             )
             return str(release.get("body") or ""), str(release.get("html_url") or "")
         raise ReleaseError(
-            f"The release {settings.tag} exists already, with other notes, title"
-            " or pre-release flag: releases are not changed or replaced, so"
-            " release the next version"
+            f"The release {settings.tag} exists already, with other notes, title,"
+            " pre-release flag or assets: releases are not changed or replaced,"
+            " so release the next version"
         )
     args = ["api", f"repos/{repo}/releases/generate-notes"]
     args += ["-f", f"tag_name={settings.tag}"]
@@ -822,6 +898,9 @@ def publish(settings: Settings, gh: Runner = _gh) -> tuple[str, str]:
                 file.name,
                 f"--prerelease={str(prerelease).lower()}",
                 *([] if latest is None else [f"--latest={str(latest).lower()}"]),
+                # With assets, gh creates a draft, uploads them, then
+                # publishes it (and deletes the draft if either fails)
+                *(["--", *map(str, settings.assets)] if settings.assets else []),
             ]
         )
     finally:
