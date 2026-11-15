@@ -108,9 +108,9 @@ to be the latest release.
 - `assets`: files to attach to the release, one path per line, relative to
   the workspace (blank lines are skipped); default is none. Each must be a
   regular file, the file names (which become the asset names) must differ
-  and use only letters, digits, `.`, `_` and `-`, not starting or ending
-  with `.` (GitHub renames other names), and paths must not contain `#`
-  (which `gh` reads as a label). Not checked or used with `check-only`,
+  and use only ASCII letters, digits, `.`, `_` and `-`, not starting or
+  ending with `.` (GitHub renames other names), and paths must not contain
+  `#` (which `gh` reads as a label). Not checked or used with `check-only`,
   which runs before the files are built.
 - `token`: the token for the GitHub API; default is the job's
   `GITHUB_TOKEN`, which needs `contents: write`, or `contents: read` with

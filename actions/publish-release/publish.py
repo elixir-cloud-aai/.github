@@ -658,7 +658,7 @@ def check_assets(assets: Sequence[Path]) -> None:
             )
         if not ASSET_NAME.fullmatch(path.name):
             raise ReleaseError(
-                f"The asset {path} has a name that GitHub would change: use"
+                f"The asset {path} has a name that GitHub would change: use ASCII"
                 " letters, digits, '.', '_' and '-' only, not starting or"
                 " ending with '.'"
             )
