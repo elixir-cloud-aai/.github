@@ -218,6 +218,7 @@ def _release(
     prerelease: bool = False,
     body: str = "",
     name: str | None = None,
+    assets: Sequence[str] = (),
 ) -> dict[str, object]:
     """Return a release as the REST API lists it (the fields used).
 
@@ -227,6 +228,7 @@ def _release(
         prerelease: Whether the release is a pre-release.
         body: Body of the release.
         name: Title of the release; default is the tag.
+        assets: Names of the release's assets.
 
     Returns:
         The release.
@@ -238,6 +240,7 @@ def _release(
         "prerelease": prerelease,
         "body": body,
         "html_url": f"https://github.com/o/r/releases/tag/{tag}",
+        "assets": [{"name": asset} for asset in assets],
     }
 
 
@@ -649,6 +652,92 @@ class TestPublish(unittest.TestCase):
                     "::notice::The release v1.2.0 exists already", stderr.getvalue()
                 )
 
+    def _assets(self, *names: str) -> tuple[Path, ...]:
+        """Write files to attach to the release.
+
+        Args:
+            names: Names of the files, in a directory of their own.
+
+        Returns:
+            Their paths.
+        """
+        directory = Path(self.directory.name) / "dist"
+        directory.mkdir(exist_ok=True)
+        paths = tuple(directory / name for name in names)
+        for path in paths:
+            path.write_text(f"{path.name}\n", encoding="utf-8")
+        return paths
+
+    def test_publish_assets(self) -> None:
+        """Assets are passed to `gh release create`, after the flags.
+
+        `gh` creates the release as a draft, uploads the assets and publishes
+        it only then (and deletes the draft if that fails), so that an
+        immutable release gets its assets.
+        """
+        assets = self._assets("app-1.2.0.tgz", "app-1.2.0.tgz.sigstore.json")
+        gh = FakeGh(releases=[_release("v1.1.0")])
+        settings = dataclasses.replace(self.settings, assets=assets)
+        publish.publish(settings, gh)
+        create = gh.calls[-1]
+        self.assertEqual(
+            create[create.index("--latest=true") :],
+            ["--latest=true", "--", *(str(path) for path in assets)],
+        )
+
+    def test_publish_invalid_assets(self) -> None:
+        """Missing, non-file, duplicate or ambiguous assets fail before any call."""
+        (good,) = self._assets("app.tgz")
+        other = Path(self.directory.name) / "other"
+        other.mkdir()
+        (other / "app.tgz").write_text("x\n", encoding="utf-8")
+        (hashed,) = self._assets("app#1.tgz")
+        for assets, message in [
+            ((good.with_name("missing.tgz"),), "is not a file"),
+            ((good.parent,), "is not a file"),
+            ((good, other / "app.tgz"), "same name"),
+            ((hashed,), "'#'"),
+        ]:
+            with self.subTest(assets=assets):
+                gh = FakeGh(releases=[_release("v1.1.0")])
+                settings = dataclasses.replace(self.settings, assets=assets)
+                with self.assertRaisesRegex(publish.ReleaseError, message):
+                    publish.publish(settings, gh)
+                self.assertEqual(gh.calls, [])
+
+    def test_check_only_ignores_assets(self) -> None:
+        """`check_only` runs before the assets are built: they aren't checked."""
+        gh = FakeGh(releases=[_release("v1.1.0")])
+        settings = dataclasses.replace(
+            self.settings,
+            check_only=True,
+            assets=(Path(self.directory.name) / "missing.tgz",),
+        )
+        self.assertEqual(publish.publish(settings, gh), (CURATED, ""))
+
+    def test_publish_exists_assets(self) -> None:
+        """An existing release counts as ours only with all the assets."""
+        assets = self._assets("app-1.2.0.tgz", "app-1.2.0.tgz.sigstore.json")
+        settings = dataclasses.replace(self.settings, assets=assets)
+        text = publish.body(CURATED, GENERATED)[0]
+        names = [path.name for path in assets]
+        for existing, ours in [
+            (names, True),
+            ([*names, "extra.txt"], True),
+            (names[:1], False),
+            ([], False),
+        ]:
+            with self.subTest(existing=existing):
+                release = _release("v1.2.0", body=text, assets=existing)
+                gh = FakeGh(releases=[_release("v1.1.0"), release])
+                if ours:
+                    with redirect_stderr(io.StringIO()):
+                        publish.publish(settings, gh)
+                else:
+                    with self.assertRaisesRegex(publish.ReleaseError, "assets"):
+                        publish.publish(settings, gh)
+                self.assertFalse(any(call[0] == "release" for call in gh.calls))
+
     def test_publish_missing_tags(self) -> None:
         """A missing tag or previous tag fails before notes are generated."""
         for (tag, previous, message), check_only in itertools.product(
@@ -848,6 +937,22 @@ class TestMain(unittest.TestCase):
         self.assertEqual(
             (self.path / "summary").read_text(encoding="utf-8"),
             publish.body(CURATED, GENERATED)[0],
+        )
+
+    def test_publish_assets(self) -> None:
+        """`ASSETS` holds one path per line; blank lines are skipped."""
+        dist = self.path / "dist"
+        dist.mkdir()
+        for name in ("a.tgz", "b.json"):
+            (dist / name).write_text("x\n", encoding="utf-8")
+        self.env["ASSETS"] = f"\n  {dist / 'a.tgz'}  \n\n{dist / 'b.json'}\n"
+        gh = FakeGh()
+        status, _, stderr = self._main(["publish"], gh)
+        self.assertEqual((status, stderr), (0, ""))
+        create = gh.calls[-1]
+        self.assertEqual(
+            create[create.index("--") :],
+            ["--", str(dist / "a.tgz"), str(dist / "b.json")],
         )
 
     def test_publish_missing_settings(self) -> None:

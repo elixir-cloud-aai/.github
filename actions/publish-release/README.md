@@ -68,6 +68,9 @@ jobs:
         with:
           notes: docs/releases/${{ needs.prepare.outputs.version }}.md
           commit: ${{ github.sha }}
+          # Optional: files to attach, e.g., a packaged Helm chart
+          assets: |
+            dist/app-${{ needs.prepare.outputs.version }}.tgz
 ```
 
 Run `publish` last, after all artefacts are published, so that the release
@@ -102,6 +105,11 @@ to be the latest release.
 - `title`: the title of the release; default is the tag.
 - `check-only`: `true` to only check that the release can be created,
   `false` (default) to create it; other values fail.
+- `assets`: files to attach to the release, one path per line, relative to
+  the workspace (blank lines are skipped); default is none. Each must be a
+  regular file, the file names (which become the asset names) must differ,
+  and paths must not contain `#` (which `gh` reads as a label). Not checked
+  or used with `check-only`, which runs before the files are built.
 - `token`: the token for the GitHub API; default is the job's
   `GITHUB_TOKEN`, which needs `contents: write`, or `contents: read` with
   `check-only`.
@@ -133,11 +141,19 @@ to be the latest release.
   failed attempt) and re-run. If a published release of the tag exists,
   `check-only` fails (release the next version); creating it passes without
   changes only if the release's body starts with the curated notes and it
-  has the same title and pre-release flag (e.g., when the job is re-run
+  has the same title and pre-release flag, and an asset with the name of
+  each file of `assets` (e.g., when the job is re-run
   after a creation that succeeded but wasn't reported; the generated part
   may differ by then), and fails otherwise. So re-run only the failed jobs:
   re-running `prepare` too fails there, as the release exists. Published
   releases are never changed (with immutable releases, they can't be).
+- **Assets:** with `assets`, `gh release create` creates the release as a
+  draft, uploads the files, and publishes it only then (with the flags
+  above), so that releases are complete when they appear, also with
+  [immutable releases][immutable-releases], whose assets can't be added
+  after publishing. If an upload or the publishing fails, `gh` deletes the
+  draft, so that a re-run of the job starts afresh; if deleting it fails
+  too, delete the draft and re-run.
 - **Latest release:** a pre-release is never the latest release; a release
   is the latest unless a published release (not a pre-release) has a
   higher version, e.g., for a patch of an older line. For tags that are no
@@ -152,3 +168,4 @@ library and `gh` only; its tests are in
 [`tests/publish-release/`](../../tests/publish-release/).
 
 [generated-notes]: <https://docs.github.com/en/repositories/releasing-projects-on-github/automatically-generated-release-notes>
+[immutable-releases]: <https://docs.github.com/en/code-security/supply-chain-security/understanding-your-software-supply-chain/immutable-releases>

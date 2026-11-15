@@ -580,6 +580,9 @@ class Settings:
             or false).
         commit: Commit that the tag must point to (`COMMIT`); empty for no
             check.
+        assets: Files to attach to the release (`ASSETS`: one path per
+            line, blank lines skipped); not checked or used with
+            `check_only`.
     """
 
     repository: str
@@ -590,6 +593,7 @@ class Settings:
     title: str = ""
     check_only: bool = False
     commit: str = ""
+    assets: tuple[Path, ...] = ()
 
     @classmethod
     def from_env(cls, env: dict[str, str]) -> Settings:
@@ -622,7 +626,38 @@ class Settings:
             prerelease=env.get("PRERELEASE") or "auto",
             previous=env.get("PREVIOUS_TAG", ""),
             title=env.get("TITLE", ""),
+            assets=tuple(
+                Path(line.strip())
+                for line in env.get("ASSETS", "").splitlines()
+                if line.strip()
+            ),
         )
+
+
+def check_assets(assets: Sequence[Path]) -> None:
+    """Check the files to attach to a release.
+
+    Args:
+        assets: Paths of the files.
+
+    Raises:
+        ReleaseError: If a path has a `#` (which `gh` reads as the start of
+            a display label), isn't a regular file, or two files have the
+            same name (GitHub names assets after their file name).
+    """
+    names: set[str] = set()
+    for path in assets:
+        if "#" in str(path):
+            raise ReleaseError(
+                f"The asset {path} has a '#', which gh reads as a label: rename it"
+            )
+        if not path.is_file():
+            raise ReleaseError(f"The asset {path} is not a file")
+        if path.name in names:
+            raise ReleaseError(
+                f"Two assets have the same name {path.name}: rename one of them"
+            )
+        names.add(path.name)
 
 
 def read_notes(path: Path) -> str:
@@ -672,16 +707,19 @@ def _is_ours(
 
     Returns:
         Whether the release's body starts with the curated notes (followed
-        by nothing or a blank line), and its title and pre-release flag are
-        those of the settings.
+        by nothing or a blank line), its title and pre-release flag are
+        those of the settings, and it has an asset with the name of each of
+        the settings' assets.
     """
     text = str(release.get("body") or "").replace("\r\n", "\n").strip()
     notes = curated.removeprefix("﻿").strip()
+    names = {str(asset.get("name")) for asset in release.get("assets") or []}
     return (
         text.startswith(notes)
         and (text == notes or text[len(notes) :].startswith("\n\n"))
         and release.get("name") == (settings.title or settings.tag)
         and bool(release.get("prerelease")) is prerelease
+        and {path.name for path in settings.assets} <= names
     )
 
 
@@ -741,6 +779,8 @@ def publish(settings: Settings, gh: Runner = _gh) -> tuple[str, str]:
             fails.
     """
     curated = read_notes(settings.notes)
+    if not settings.check_only:
+        check_assets(settings.assets)
     prerelease = is_prerelease(settings.tag, settings.prerelease)
     repo = settings.repository
     pages = json.loads(
@@ -792,9 +832,9 @@ def publish(settings: Settings, gh: Runner = _gh) -> tuple[str, str]:
             )
             return str(release.get("body") or ""), str(release.get("html_url") or "")
         raise ReleaseError(
-            f"The release {settings.tag} exists already, with other notes, title"
-            " or pre-release flag: releases are not changed or replaced, so"
-            " release the next version"
+            f"The release {settings.tag} exists already, with other notes, title,"
+            " pre-release flag or assets: releases are not changed or replaced,"
+            " so release the next version"
         )
     args = ["api", f"repos/{repo}/releases/generate-notes"]
     args += ["-f", f"tag_name={settings.tag}"]
@@ -822,6 +862,9 @@ def publish(settings: Settings, gh: Runner = _gh) -> tuple[str, str]:
                 file.name,
                 f"--prerelease={str(prerelease).lower()}",
                 *([] if latest is None else [f"--latest={str(latest).lower()}"]),
+                # With assets, gh creates a draft, uploads them, then
+                # publishes it (and deletes the draft if either fails)
+                *(["--", *map(str, settings.assets)] if settings.assets else []),
             ]
         )
     finally:
