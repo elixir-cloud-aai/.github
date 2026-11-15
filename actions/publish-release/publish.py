@@ -33,6 +33,7 @@ action runs on GitHub-hosted Linux runners without installing anything.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -92,6 +93,9 @@ RELATIVE = re.compile(
 )
 # Marks of unfinished notes
 TODO = re.compile(r"\b(?:TODO|FIXME)\b")
+# Asset names that GitHub keeps as they are (it renames others, e.g., with
+# spaces or a leading dot), so that a re-run finds them by name
+ASSET_NAME = re.compile(r"[A-Za-z0-9_-](?:[A-Za-z0-9._-]*[A-Za-z0-9_-])?")
 RELATIVE_LINK = (
     "Relative link (e.g., to a page of the docs): it doesn't resolve in the"
     " GitHub release, so link absolutely (https://...)"
@@ -642,14 +646,21 @@ def check_assets(assets: Sequence[Path]) -> None:
 
     Raises:
         ReleaseError: If a path has a `#` (which `gh` reads as the start of
-            a display label), isn't a regular file, or two files have the
-            same name (GitHub names assets after their file name).
+            a display label), a file name that GitHub would rename (see
+            `ASSET_NAME`), isn't a regular file, or two files have the same
+            name (GitHub names assets after their file name).
     """
     names: set[str] = set()
     for path in assets:
         if "#" in str(path):
             raise ReleaseError(
                 f"The asset {path} has a '#', which gh reads as a label: rename it"
+            )
+        if not ASSET_NAME.fullmatch(path.name):
+            raise ReleaseError(
+                f"The asset {path} has a name that GitHub would change: use"
+                " letters, digits, '.', '_' and '-' only, not starting or"
+                " ending with '.'"
             )
         if not path.is_file():
             raise ReleaseError(f"The asset {path} is not a file")
@@ -709,18 +720,38 @@ def _is_ours(
         Whether the release's body starts with the curated notes (followed
         by nothing or a blank line), its title and pre-release flag are
         those of the settings, and it has an asset with the name of each of
-        the settings' assets.
+        the settings' assets, with the same SHA-256 (if GitHub reports the
+        asset's `digest`).
     """
     text = str(release.get("body") or "").replace("\r\n", "\n").strip()
     notes = curated.removeprefix("﻿").strip()
-    names = {str(asset.get("name")) for asset in release.get("assets") or []}
+    digests = {
+        str(asset.get("name")): str(asset.get("digest") or "")
+        for asset in release.get("assets") or []
+    }
     return (
         text.startswith(notes)
         and (text == notes or text[len(notes) :].startswith("\n\n"))
         and release.get("name") == (settings.title or settings.tag)
         and bool(release.get("prerelease")) is prerelease
-        and {path.name for path in settings.assets} <= names
+        and all(
+            path.name in digests
+            and digests[path.name] in ("", f"sha256:{_sha256(path)}")
+            for path in settings.assets
+        )
     )
+
+
+def _sha256(path: Path) -> str:
+    """Return the SHA-256 of a file.
+
+    Args:
+        path: Path of the file.
+
+    Returns:
+        The hexadecimal digest.
+    """
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _start(settings: Settings, releases: list[Release], tags: list[str]) -> str:

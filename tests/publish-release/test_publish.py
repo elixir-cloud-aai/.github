@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import importlib.util
 import io
 import itertools
@@ -218,7 +219,7 @@ def _release(
     prerelease: bool = False,
     body: str = "",
     name: str | None = None,
-    assets: Sequence[str] = (),
+    assets: Sequence[str | tuple[str, str]] = (),
 ) -> dict[str, object]:
     """Return a release as the REST API lists it (the fields used).
 
@@ -228,7 +229,7 @@ def _release(
         prerelease: Whether the release is a pre-release.
         body: Body of the release.
         name: Title of the release; default is the tag.
-        assets: Names of the release's assets.
+        assets: Names of the release's assets, or names and digests.
 
     Returns:
         The release.
@@ -240,7 +241,12 @@ def _release(
         "prerelease": prerelease,
         "body": body,
         "html_url": f"https://github.com/o/r/releases/tag/{tag}",
-        "assets": [{"name": asset} for asset in assets],
+        "assets": [
+            {"name": asset}
+            if isinstance(asset, str)
+            else {"name": asset[0], "digest": asset[1]}
+            for asset in assets
+        ],
     }
 
 
@@ -669,13 +675,17 @@ class TestPublish(unittest.TestCase):
         return paths
 
     def test_publish_assets(self) -> None:
-        """Assets are passed to `gh release create`, after the flags.
+        """Assets are passed to `gh release create`, after the flags and `--`.
+
+        Paths are passed as they are, also with a leading `-`.
 
         `gh` creates the release as a draft, uploads the assets and publishes
         it only then (and deletes the draft if that fails), so that an
         immutable release gets its assets.
         """
-        assets = self._assets("app-1.2.0.tgz", "app-1.2.0.tgz.sigstore.json")
+        assets = self._assets(
+            "app-1.2.0.tgz", "app-1.2.0.tgz.sigstore.json", "-notes.txt"
+        )
         gh = FakeGh(releases=[_release("v1.1.0")])
         settings = dataclasses.replace(self.settings, assets=assets)
         publish.publish(settings, gh)
@@ -697,6 +707,10 @@ class TestPublish(unittest.TestCase):
             ((good.parent,), "is not a file"),
             ((good, other / "app.tgz"), "same name"),
             ((hashed,), "'#'"),
+            *(
+                ((path,), "would change")
+                for path in self._assets("a b.tgz", ".hidden", "app.", "Ä.tgz")
+            ),
         ]:
             with self.subTest(assets=assets):
                 gh = FakeGh(releases=[_release("v1.1.0")])
@@ -716,14 +730,25 @@ class TestPublish(unittest.TestCase):
         self.assertEqual(publish.publish(settings, gh), (CURATED, ""))
 
     def test_publish_exists_assets(self) -> None:
-        """An existing release counts as ours only with all the assets."""
+        """An existing release counts as ours only with all the assets.
+
+        Their digests must match where GitHub reports them.
+        """
         assets = self._assets("app-1.2.0.tgz", "app-1.2.0.tgz.sigstore.json")
         settings = dataclasses.replace(self.settings, assets=assets)
         text = publish.body(CURATED, GENERATED)[0]
         names = [path.name for path in assets]
+        digests = [
+            f"sha256:{hashlib.sha256(path.read_bytes()).hexdigest()}"
+            for path in assets
+        ]
+        other = f"sha256:{'0' * 64}"
         for existing, ours in [
             (names, True),
             ([*names, "extra.txt"], True),
+            (list(zip(names, digests, strict=True)), True),
+            ([(names[0], digests[0]), names[1]], True),
+            ([(names[0], other), names[1]], False),
             (names[:1], False),
             ([], False),
         ]:

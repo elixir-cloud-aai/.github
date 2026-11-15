@@ -107,9 +107,11 @@ to be the latest release.
   `false` (default) to create it; other values fail.
 - `assets`: files to attach to the release, one path per line, relative to
   the workspace (blank lines are skipped); default is none. Each must be a
-  regular file, the file names (which become the asset names) must differ,
-  and paths must not contain `#` (which `gh` reads as a label). Not checked
-  or used with `check-only`, which runs before the files are built.
+  regular file, the file names (which become the asset names) must differ
+  and use only letters, digits, `.`, `_` and `-`, not starting or ending
+  with `.` (GitHub renames other names), and paths must not contain `#`
+  (which `gh` reads as a label). Not checked or used with `check-only`,
+  which runs before the files are built.
 - `token`: the token for the GitHub API; default is the job's
   `GITHUB_TOKEN`, which needs `contents: write`, or `contents: read` with
   `check-only`.
@@ -142,11 +144,12 @@ to be the latest release.
   `check-only` fails (release the next version); creating it passes without
   changes only if the release's body starts with the curated notes and it
   has the same title and pre-release flag, and an asset with the name of
-  each file of `assets` (e.g., when the job is re-run
-  after a creation that succeeded but wasn't reported; the generated part
-  may differ by then), and fails otherwise. So re-run only the failed jobs:
-  re-running `prepare` too fails there, as the release exists. Published
-  releases are never changed (with immutable releases, they can't be).
+  each file of `assets`, with the file's SHA-256 if GitHub reports the
+  asset's digest (e.g., when the job is re-run after a creation that
+  succeeded but wasn't reported; the generated part may differ by then),
+  and fails otherwise. So re-run only the failed jobs: re-running
+  `prepare` too fails there, as the release exists. Published releases are
+  never changed (with immutable releases, they can't be).
 - **Assets:** with `assets`, `gh release create` creates the release as a
   draft, uploads the files, and publishes it only then (with the flags
   above), so that releases are complete when they appear, also with
