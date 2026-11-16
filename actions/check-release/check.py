@@ -65,8 +65,10 @@ CITATION_PATH = re.compile(
 # value (plain, or in single or double quotes) and an optional comment
 CFF_KEY = re.compile(
     r"(?P<key>version|date-released)[ \t]*:[ \t]*"
-    r"(?:\"(?P<double>[^\"\\]*)\"|'(?P<single>[^']*)'|(?P<plain>[^ \t#'\"][^#]*?))"
-    r"[ \t]*(?:#.*)?",
+    r"(?:\"(?P<double>[^\"\\]*)\"|'(?P<single>[^']*)'"
+    r"|(?P<plain>[^ \t#'\"](?:[^ \t]|[ \t]+(?![ \t]|#))*))"
+    # A comment starts with `#` after whitespace only (`1.2.0#x` is a value)
+    r"[ \t]*(?:(?<=[ \t])#.*)?",
     re.ASCII,
 )
 DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", re.ASCII)
@@ -151,6 +153,7 @@ class Settings:
         """
         checks = (
             (REPOSITORY, self.repository, "repository", "<owner>/<repo>"),
+            (BRANCH, self.tag, "tag", "a tag name"),
             (COMMIT, self.commit, "commit", "a full, lower-case commit SHA"),
             (PREFIX, self.prefix, "tag-prefix", "e.g., v or chart-v"),
             (BRANCH, self.branch, "branch", "a branch name"),
@@ -313,14 +316,26 @@ def check_branch(settings: Settings, gh: Runner) -> None:
         settings: The settings.
         gh: Runs the GitHub CLI.
 
+    The head of the branch is looked up first, so that a tag of the same
+    name (which a bare name in a comparison would also match) doesn't count.
+
     Raises:
         CheckError: If the commit is not the head of the branch or one of
-            its ancestors, or the comparison fails.
+            its ancestors, or the lookup or comparison fails.
     """
     branch, commit = settings.branch, settings.commit
-    path = f"repos/{settings.repository}/compare/{_quote(branch)}...{commit}?per_page=1"
+    repo = settings.repository
     try:
-        status = _api(gh, path).get("status")
+        ref = _api(gh, f"repos/{repo}/git/ref/heads/{_quote(branch)}")
+        head = ref.get("object")
+        head_sha = head.get("sha") if isinstance(head, dict) else None
+        if ref.get("ref") != f"refs/heads/{branch}" or not (
+            isinstance(head_sha, str) and COMMIT.fullmatch(head_sha)
+        ):
+            raise CheckError(f"unexpected response: {ref}")
+        status = _api(gh, f"repos/{repo}/compare/{head_sha}...{commit}?per_page=1").get(
+            "status"
+        )
     except CheckError as error:
         raise CheckError(
             f"Could not compare {commit} with '{branch}': {error}"

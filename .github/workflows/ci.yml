@@ -63,6 +63,9 @@ jobs:
       contents: read
       # check-release: read the CI runs of a release commit
       actions: read
+    env:
+      # check-release: the commit of this repository's tag v1.2.0
+      RELEASED_SHA: bf3840c9c072aaf37d6cafe199aaa1994087d1ef
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -207,28 +210,28 @@ jobs:
           WORKFLOW: ci.yml
           CI_BRANCH: main
         run: |
-          released=bf3840c9c072aaf37d6cafe199aaa1994087d1ef
           # Another commit SHA, of no commit
-          other="${released//b/a}"
-          # <tag> <commit> <citation> <expected error>
+          other="${RELEASED_SHA//b/a}"
+          # <tag> <commit> <citation> <expected errors...>
           expect() {
-            local out
+            local out message
             if out="$(TAG="$1" COMMIT="$2" CITATION="$3" \
               python3 -I actions/check-release/check.py 2>&1)"; then
               echo "::error::Expected the check of $1 at $2 to fail"
               exit 1
             fi
-            if [[ "${out}" != *"$4"* ]]; then
-              echo "::error::Expected '$4', got: ${out}"
-              exit 1
-            fi
+            for message in "${@:4}"; do
+              if [[ "${out}" != *"${message}"* ]]; then
+                echo "::error::Expected '${message}', got: ${out}"
+                exit 1
+              fi
+            done
           }
-          expect v1.0.0 "${released}" "" "Tag 'v1.0.0' is not annotated"
-          expect v1.2.0 "${other}" "" "not to the commit of the run"
-          expect v1.2.0 "${other}" "" "Could not compare"
-          expect v1.2.0 "${other}" "" "No successful run of the CI workflow"
-          expect v1.2 "${released}" "" "Tag 'v1.2' is no release version"
-          expect v1.2.0 "${released}" CITATION.cff "Could not read CITATION.cff"
+          expect v1.0.0 "${RELEASED_SHA}" "" "Tag 'v1.0.0' is not annotated"
+          expect v1.2.0 "${other}" "" "not to the commit of the run" \
+            "Could not compare" "No successful run of the CI workflow"
+          expect v1.2 "${RELEASED_SHA}" "" "Tag 'v1.2' is no release version"
+          expect v1.2.0 "${RELEASED_SHA}" CITATION.cff "Could not read CITATION.cff"
       # The action uses the run's repository: only here, not in forks
       - name: Check a released tag with the action
         id: release-check
@@ -236,7 +239,7 @@ jobs:
         uses: ./actions/check-release
         with:
           tag: v1.2.0
-          commit: bf3840c9c072aaf37d6cafe199aaa1994087d1ef
+          commit: ${{ env.RELEASED_SHA }}
           ci-branch: main
           citation: ""
           version: 1.2.0
@@ -248,7 +251,7 @@ jobs:
             ${{ steps.release-check.outputs.prerelease }}
             ${{ steps.release-check.outputs.sha }}
         run: |
-          expected="1.2.0 false bf3840c9c072aaf37d6cafe199aaa1994087d1ef"
+          expected="1.2.0 false ${RELEASED_SHA}"
           if [[ "${OUTPUTS}" != "${expected}" ]]; then
             echo "::error::Expected outputs '${expected}', got '${OUTPUTS}'"
             exit 1

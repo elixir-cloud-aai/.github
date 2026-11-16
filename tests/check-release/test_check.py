@@ -11,8 +11,10 @@ import os
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 from collections.abc import Sequence
+from typing import Any
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
@@ -22,7 +24,7 @@ SCRIPT = ROOT / "actions/check-release/check.py"
 PUBLISH = ROOT / "actions/publish-release/publish.py"
 
 
-def _load(name: str, path: Path) -> object:
+def _load(name: str, path: Path) -> types.ModuleType:
     """Load a script of an action as a module (the directories aren't packages).
 
     Args:
@@ -60,7 +62,9 @@ authors:
 
 TAG_PATH = f"repos/{REPO}/git/ref/tags/v1.2.0"
 OBJECT_PATH = f"repos/{REPO}/git/tags/{TAG_OBJECT}"
-COMPARE_PATH = f"repos/{REPO}/compare/main...{COMMIT}?per_page=1"
+HEAD = "76543210fedcba9876543210fedcba9876543210"
+BRANCH_PATH = f"repos/{REPO}/git/ref/heads/main"
+COMPARE_PATH = f"repos/{REPO}/compare/{HEAD}...{COMMIT}?per_page=1"
 RUNS_PATH = (
     f"repos/{REPO}/actions/workflows/ci.yml/runs?head_sha={COMMIT}"
     "&event=push&status=success&per_page=1&branch=dev"
@@ -68,7 +72,7 @@ RUNS_PATH = (
 CITATION_PATH = f"repos/{REPO}/contents/CITATION.cff?ref={COMMIT}"
 
 
-def _settings(**changes: str) -> object:
+def _settings(**changes: str) -> Any:
     """Return settings of a good release of `v1.2.0`, with changes.
 
     Args:
@@ -100,6 +104,10 @@ def _responses(tag: str = "v1.2.0") -> dict[str, object]:
             "tag": tag,
             "object": {"type": "commit", "sha": COMMIT},
             "verification": {"verified": True, "reason": "valid"},
+        },
+        BRANCH_PATH: {
+            "ref": "refs/heads/main",
+            "object": {"type": "commit", "sha": HEAD},
         },
         COMPARE_PATH: {"status": "behind"},
         RUNS_PATH: {"total_count": 1},
@@ -210,6 +218,10 @@ class TestVersions(unittest.TestCase):
             "2.0.0-beta.1",
             "1.0.0-rc1",
             "10.0.0",
+            "0.0.0",
+            "1.0.0a0",
+            "1.0.0.rc.0",
+            "1.0.0-alpha1",
         ]
         for version in versions:
             with self.subTest(version=version):
@@ -247,6 +259,15 @@ class TestCitation(unittest.TestCase):
         self.assertEqual(
             check.read_citation("version : 1.2.0 # comment\n"), {"version": "1.2.0"}
         )
+        # `#` starts a comment only after whitespace
+        for text, version in {
+            "version: 1.2.0#x\n": "1.2.0#x",
+            "version: 1.2.0  #x\n": "1.2.0",
+            "version: 1.2.0\t# x\n": "1.2.0",
+            "version: a b #c\n": "a b",
+        }.items():
+            with self.subTest(text=text):
+                self.assertEqual(check.read_citation(text), {"version": version})
 
     def test_missing(self) -> None:
         """Missing keys are left out."""
@@ -314,6 +335,7 @@ class TestSettings(unittest.TestCase):
             "WORKFLOW": "../ci.yml",
             "CI_BRANCH": "dev..main",
             "CITATION": "../CITATION.cff",
+            "TAG": "../../v1.2.0",
         }
         for name, value in cases.items():
             with self.subTest(name=name):
@@ -364,7 +386,14 @@ class TestCheck(unittest.TestCase):
         )
         self.assertEqual(
             [call[-1] for call in gh.calls],
-            [TAG_PATH, OBJECT_PATH, COMPARE_PATH, RUNS_PATH, CITATION_PATH],
+            [
+                TAG_PATH,
+                OBJECT_PATH,
+                BRANCH_PATH,
+                COMPARE_PATH,
+                RUNS_PATH,
+                CITATION_PATH,
+            ],
         )
         self.assertEqual(
             gh.calls[-1],
@@ -398,7 +427,7 @@ class TestCheck(unittest.TestCase):
         del responses[CITATION_PATH]
         gh = FakeGh(responses)
         self.assertEqual(self._check(gh, ci_branch="", citation="")[0], [])
-        self.assertEqual(len(gh.calls), 4)
+        self.assertEqual(len(gh.calls), 5)
         responses[runs] = {"total_count": 0}
         self._finding(
             FakeGh(responses),
@@ -410,9 +439,10 @@ class TestCheck(unittest.TestCase):
     def test_quoted_paths(self) -> None:
         """Branch, workflow and file paths are quoted; slashes are kept."""
         responses = _responses()
-        responses[f"repos/{REPO}/compare/release/1.x...{COMMIT}?per_page=1"] = (
-            responses.pop(COMPARE_PATH)
-        )
+        responses[f"repos/{REPO}/git/ref/heads/release/1.x"] = {
+            "ref": "refs/heads/release/1.x",
+            "object": {"type": "commit", "sha": HEAD},
+        }
         responses[RUNS_PATH.replace("branch=dev", "branch=release%2F1.x")] = (
             responses.pop(RUNS_PATH)
         )
@@ -487,6 +517,18 @@ class TestCheck(unittest.TestCase):
                 responses = _responses()
                 responses[COMPARE_PATH] = {"status": status}
                 self._finding(FakeGh(responses), f"is not on 'main' (status: {status})")
+        # The branch, not a tag of the same name, and only that branch
+        for ref in (
+            {"ref": "refs/tags/main", "object": {"type": "commit", "sha": HEAD}},
+            {"ref": "refs/heads/main", "object": {"type": "commit"}},
+        ):
+            with self.subTest(ref=ref):
+                responses = _responses()
+                responses[BRANCH_PATH] = ref
+                self._finding(FakeGh(responses), "unexpected response")
+        responses = _responses()
+        del responses[BRANCH_PATH]
+        self._finding(FakeGh(responses), "Could not compare")
         responses = _responses()
         del responses[COMPARE_PATH]
         self._finding(FakeGh(responses), "Could not compare")
@@ -660,6 +702,7 @@ class TestMain(unittest.TestCase):
         responses.mkdir()
         for name, path in {
             "ref": TAG_PATH,
+            "branch": BRANCH_PATH,
             "object": OBJECT_PATH,
             "compare": COMPARE_PATH,
             "runs": RUNS_PATH,
@@ -674,6 +717,7 @@ class TestMain(unittest.TestCase):
             'eval "last=\\${$#}"\n'
             'case "${last}" in\n'
             f'  */git/ref/tags/*) cat "{responses}/ref" ;;\n'
+            f'  */git/ref/heads/*) cat "{responses}/branch" ;;\n'
             f'  */git/tags/*) cat "{responses}/object" ;;\n'
             f'  */compare/*) cat "{responses}/compare" ;;\n'
             f'  */runs\\?*) cat "{responses}/runs" ;;\n'
@@ -694,7 +738,7 @@ class TestMain(unittest.TestCase):
         )
         self.assertEqual((result.returncode, result.stderr), (0, ""))
         self.assertIn("version=1.2.0\n", self.output.read_text(encoding="utf-8"))
-        self.assertEqual(len(log.read_text(encoding="utf-8").splitlines()), 5)
+        self.assertEqual(len(log.read_text(encoding="utf-8").splitlines()), 6)
 
     def test_gh(self) -> None:
         """`_gh` returns the output of `gh`, and fails with its error."""
