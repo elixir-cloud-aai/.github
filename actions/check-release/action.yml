@@ -1,0 +1,88 @@
+---
+# Called from the `prepare` job of each repository's release workflow, before
+# anything is built; see the README of this action
+name: Check release
+description: >-
+  Fail unless the release tag is annotated, signed and verified by GitHub,
+  points to the commit of the run, which is on the release branch and passed
+  CI, and the versions in CITATION.cff and the package match it.
+inputs:
+  tag:
+    description: Tag of the release. Default is the tag of the workflow run.
+    required: false
+    default: ${{ github.ref_name }}
+  commit:
+    description: >-
+      Commit SHA that the tag must point to. Default is the commit of the
+      workflow run.
+    required: false
+    default: ${{ github.sha }}
+  tag-prefix:
+    description: >-
+      Part of the tag before the version, e.g., `chart-v` for tags like
+      `chart-v1.0.0`.
+    required: false
+    default: v
+  branch:
+    description: Branch that the commit must be on.
+    required: false
+    default: main
+  workflow:
+    description: File name of the CI workflow that must have passed.
+    required: false
+    default: ci.yml
+  ci-branch:
+    description: >-
+      Branch of the push that CI must have passed for; empty for any branch.
+    required: false
+    default: dev
+  citation:
+    description: >-
+      Path of the citation metadata in the repository, whose `version` must
+      be the release version and whose `date-released` must be set; empty
+      for no check.
+    required: false
+    default: CITATION.cff
+  version:
+    description: >-
+      Package version that must be the release version (e.g., from
+      `pyproject.toml`, `package.json`, `pom.xml` or `Chart.yaml`); empty for
+      no check.
+    required: false
+    default: ""
+  token:
+    description: >-
+      Token for the GitHub API; needs `contents: read` and `actions: read`.
+    required: false
+    default: ${{ github.token }}
+outputs:
+  version:
+    description: The release version, the tag without `tag-prefix`.
+    value: ${{ steps.check.outputs.version }}
+  prerelease:
+    description: >-
+      `true` for versions below 1.0.0 and `a`, `b` and `rc` versions, else
+      `false` (as `prerelease: auto` of publish-release).
+    value: ${{ steps.check.outputs.prerelease }}
+  sha:
+    description: The commit SHA of the release.
+    value: ${{ steps.check.outputs.sha }}
+runs:
+  using: composite
+  steps:
+    - name: Check release tag and commit
+      id: check
+      shell: bash
+      # Inputs go in through the environment, never into the script
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        GH_REPO: ${{ github.repository }}
+        TAG: ${{ inputs.tag }}
+        COMMIT: ${{ inputs.commit }}
+        TAG_PREFIX: ${{ inputs.tag-prefix }}
+        BRANCH: ${{ inputs.branch }}
+        WORKFLOW: ${{ inputs.workflow }}
+        CI_BRANCH: ${{ inputs.ci-branch }}
+        CITATION: ${{ inputs.citation }}
+        VERSION: ${{ inputs.version }}
+      run: python3 -I "${GITHUB_ACTION_PATH}/check.py"

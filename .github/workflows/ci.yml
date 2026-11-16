@@ -59,6 +59,10 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      # check-release: read the CI runs of a release commit
+      actions: read
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -181,6 +185,72 @@ jobs:
         run: |
           if [[ "${OUTCOME}" != failure ]]; then
             echo "::error::Expected the check of the released tag to fail, got ${OUTCOME}"
+            exit 1
+          fi
+      # check-release: the script (versions, citation metadata, the checks
+      # of tag, branch and CI against a stand-in for `gh`)
+      - name: Test check-release script
+        run: bash tests/check-release/test.sh
+      # check-release: the checks against this repository's real API.
+      # Depends on this repository's tags: v1.0.0 is a lightweight tag, and
+      # v1.2.0 a signed annotated tag of a commit on `main` for which CI
+      # passed (no CITATION.cff). The script runs as the action runs it, so
+      # that each case can assert its error; the action itself runs once,
+      # for its wiring (inputs reaching the script, outputs)
+      - name: Check release tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Not the fork's, which has other tags and runs (public data)
+          GH_REPO: elixir-cloud-aai/.github
+          TAG_PREFIX: v
+          BRANCH: main
+          WORKFLOW: ci.yml
+          CI_BRANCH: main
+        run: |
+          released=bf3840c9c072aaf37d6cafe199aaa1994087d1ef
+          # Another commit SHA, of no commit
+          other="${released//b/a}"
+          # <tag> <commit> <citation> <expected error>
+          expect() {
+            local out
+            if out="$(TAG="$1" COMMIT="$2" CITATION="$3" \
+              python3 -I actions/check-release/check.py 2>&1)"; then
+              echo "::error::Expected the check of $1 at $2 to fail"
+              exit 1
+            fi
+            if [[ "${out}" != *"$4"* ]]; then
+              echo "::error::Expected '$4', got: ${out}"
+              exit 1
+            fi
+          }
+          expect v1.0.0 "${released}" "" "Tag 'v1.0.0' is not annotated"
+          expect v1.2.0 "${other}" "" "not to the commit of the run"
+          expect v1.2.0 "${other}" "" "Could not compare"
+          expect v1.2.0 "${other}" "" "No successful run of the CI workflow"
+          expect v1.2 "${released}" "" "Tag 'v1.2' is no release version"
+          expect v1.2.0 "${released}" CITATION.cff "Could not read CITATION.cff"
+      # The action uses the run's repository: only here, not in forks
+      - name: Check a released tag with the action
+        id: release-check
+        if: github.repository == 'elixir-cloud-aai/.github'
+        uses: ./actions/check-release
+        with:
+          tag: v1.2.0
+          commit: bf3840c9c072aaf37d6cafe199aaa1994087d1ef
+          ci-branch: main
+          citation: ""
+          version: 1.2.0
+      - name: Expect the outputs of the released tag
+        if: github.repository == 'elixir-cloud-aai/.github'
+        env:
+          OUTPUTS: >-
+            ${{ steps.release-check.outputs.version }}
+            ${{ steps.release-check.outputs.prerelease }}
+            ${{ steps.release-check.outputs.sha }}
+        run: |
+          expected="1.2.0 false bf3840c9c072aaf37d6cafe199aaa1994087d1ef"
+          if [[ "${OUTPUTS}" != "${expected}" ]]; then
+            echo "::error::Expected outputs '${expected}', got '${OUTPUTS}'"
             exit 1
           fi
       # scan-image: the pip check (`check-pip.sh`), on made-up reports and
