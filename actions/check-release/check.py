@@ -64,7 +64,7 @@ CITATION_PATH = re.compile(
 # Top-level keys of `CITATION.cff` that are checked, with a one-line scalar
 # value (plain, or in single or double quotes) and an optional comment
 CFF_KEY = re.compile(
-    r"(?P<key>version|date-released)[ \t]*:[ \t]*"
+    r"(?P<key>version|date-released)[ \t]*:[ \t]+"
     r"(?:\"(?P<double>[^\"\\]*)\"|'(?P<single>[^']*)'"
     r"|(?P<plain>[^ \t#'\"](?:[^ \t]|[ \t]+(?![ \t]|#))*))"
     # A comment starts with `#` after whitespace only (`1.2.0#x` is a value)
@@ -312,12 +312,12 @@ def check_tag(settings: Settings, gh: Runner) -> None:
 def check_branch(settings: Settings, gh: Runner) -> None:
     """Check that the commit is on the release branch.
 
+    The head of the branch is looked up first, so that a tag of the same
+    name (which a bare name in a comparison would also match) doesn't count.
+
     Args:
         settings: The settings.
         gh: Runs the GitHub CLI.
-
-    The head of the branch is looked up first, so that a tag of the same
-    name (which a bare name in a comparison would also match) doesn't count.
 
     Raises:
         CheckError: If the commit is not the head of the branch or one of

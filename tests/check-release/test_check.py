@@ -280,6 +280,8 @@ class TestCitation(unittest.TestCase):
             "version:\n  1.2.0\n": "one-line value",
             'version: "1.2.0\n': "one-line value",
             "date-released: # none\n": "one-line value",
+            # Not a key in YAML: no space after the colon
+            "version:1.2.0\n": "one-line value",
         }
         for text, message in cases.items():
             with self.subTest(text=text):

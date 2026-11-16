@@ -38,12 +38,12 @@ package version does).
 
 ## Branches
 
-The defaults fit the organisation's flow: changes are merged into `dev`,
-where CI runs for each push, and `main` is moved forward to the release
-commit (`git push origin <sha>:main`, a fast-forward), so that the commit
-on `main` is the very commit that CI tested on `dev`. If `main` gets merge
-or squash commits instead, the release commit's CI run is a push to `main`:
-set `ci-branch: main` (as this repository does), or empty for a push to any
+The defaults fit repositories that develop on `dev`, where CI runs for
+each push, and move `main` forward to the release commit
+(`git push origin <sha>:main`, a fast-forward), so that the commit on
+`main` is the very commit that CI tested on `dev`. If changes are merged
+into `main` directly (as in this repository), the release commit's CI run
+is a push to `main`: set `ci-branch: main`, or empty for a push to any
 branch.
 
 ## Usage
