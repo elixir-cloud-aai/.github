@@ -13,11 +13,14 @@ repositories:
   - cloud-registry
   - cloud-registry-ui
   - docs
+  - drs-filer
   - foca
   - foca-plugins
+  - generic-issues
   - krini
   - landing-page
   - proTES
+  - prowes
   - Pubgrade
   - Pubgrade-Sidecar
   - TESK
