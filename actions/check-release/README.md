@@ -116,7 +116,8 @@ cloud-components: `branch: dev`); tags with a prefix set `tag-prefix`
 - `workflow`: the file name of the CI workflow that must have passed for a
   push of the commit; default `ci.yml`.
 - `ci-branch`: the branch of that push; default `dev`. Empty for a push to
-  any branch.
+  any branch, which also counts pushes of tags if the CI workflow runs for
+  them: set a branch where you can.
 - `citation`: the path of the citation metadata in the repository; default
   `CITATION.cff`. Empty for no check (repositories without citation
   metadata). Only one-line values of the top-level `version` and
@@ -153,5 +154,6 @@ library and `gh` only. CI tests it on three levels:
   (`v1.0.0`), a moved tag, a commit on no branch and without CI runs, a
   tag that is no release version, and missing citation metadata, each with
   its expected error;
-- the action itself, once, on this repository's tag `v1.2.0`: inputs
-  reaching the script, and its outputs.
+- the action itself, once, on the tag of this repository's latest release
+  (whose CI run is recent, as each release requires one): inputs reaching
+  the script, and its outputs.
