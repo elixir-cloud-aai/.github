@@ -253,6 +253,17 @@ class TestSettings(unittest.TestCase):
                 env = {**self.ENV, "TAG": tag, "TAG_PREFIX": prefix}
                 self.assertEqual(release.Settings.from_env(env).version, version)
 
+    def test_long_version(self) -> None:
+        """Versions longer than an image tag may be fail."""
+        prefix = "x" * 130 + "-v"
+        env = {**self.ENV, "TAG": f"{prefix}1.2.0"}
+        self.assertEqual(
+            release.Settings.from_env({**env, "TAG_PREFIX": prefix}).version, "1.2.0"
+        )
+        env = {**self.ENV, "TAG": "v1.2.0rc" + "1" * 130}
+        with self.assertRaisesRegex(release.ReleaseError, "longer than an image tag"):
+            release.Settings.from_env(env)
+
     def test_latest_false(self) -> None:
         """With `latest: false`, no repository is needed."""
         env = {**self.ENV, "LATEST": "false", "GH_REPO": ""}
@@ -318,10 +329,10 @@ class TestModules(unittest.TestCase):
 
     def test_stable(self) -> None:
         """Stable versions have no pre-release, in publish-release's order."""
-        for version in ["0.1.0", "1.2.0", "10.0.0"]:
+        for version in ["0.1.0", "1.2.0", "10.0.0", "1.2"]:
             with self.subTest(version=version):
                 self.assertTrue(release._is_stable(version))
-        for version in ["1.2.0rc1", "1.2.0a0", "2.0.0-beta.1", "1.2", "v1.2.0", ""]:
+        for version in ["1.2.0rc1", "1.2.0a0", "2.0.0-beta.1", "v1.2.0", "x", ""]:
             with self.subTest(version=version):
                 self.assertFalse(release._is_stable(version))
 
@@ -425,6 +436,13 @@ class TestLatest(unittest.TestCase):
         self.assertTrue(self._latest(gh))
         self.assertEqual(len(gh.calls), 2)
 
+    def test_github_flag(self) -> None:
+        """From 1.0.0, GitHub's pre-release flag counts, as for publish-release."""
+        gh = FakeGh([_release("v1.3.0", prerelease=True)])
+        self.assertTrue(self._latest(gh))
+        releases = [_release("v1.3.0", prerelease=True)]
+        self.assertTrue(publish.is_latest("v1.2.0", False, releases))
+
     def test_major_zero(self) -> None:
         """Below 1.0.0, stable versions count, though GitHub pre-releases."""
         gh = FakeGh([_release("v0.21.0", prerelease=True)])
@@ -489,7 +507,13 @@ class TestLatest(unittest.TestCase):
                     self.assertRaisesRegex(release.ReleaseError, "HTTP 502"),
                 ):
                     release.tag(_settings(), gh, docker)
-                self.assertEqual(docker.created(), [])
+                self.assertEqual(docker.created(), [f"{IMAGE}:1.2.0"])
+
+    def test_pending_two_parts(self) -> None:
+        """A pending higher version counts in publish-release's format too."""
+        gh = FakeGh([_release("v1.1.0")], ["v1.1.0", "v1.2.0", "v1.3"])
+        docker = FakeDocker({f"{IMAGE}:1.3": OTHER})
+        self.assertFalse(self._latest(gh, docker))
 
     def test_pending_release(self) -> None:
         """A higher version tagged in the registry, not yet released, wins."""
@@ -731,6 +755,14 @@ class TestMain(unittest.TestCase):
         self.assertEqual(
             run.call_args_list, [mock.call("docker", ["a"]), mock.call("gh", ["b"])]
         )
+
+    def test_timeout(self) -> None:
+        """A program that doesn't finish in time fails."""
+        with (
+            mock.patch.object(release, "TIMEOUT", 0.1),
+            self.assertRaisesRegex(release.ReleaseError, "didn't finish within"),
+        ):
+            release._run("sleep", ["5"])
 
     def test_load(self) -> None:
         """A script of another action that can't be loaded fails the import."""

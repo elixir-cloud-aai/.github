@@ -97,6 +97,10 @@ IMAGE = re.compile(
 )
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}", re.ASCII)
 LATEST = ("auto", "false")
+# Longest image tag (OCI distribution spec)
+MAX_TAG_LENGTH = 128
+# Time limit of each call of `gh` or `docker`, in seconds
+TIMEOUT = 300
 # Errors of `docker buildx imagetools inspect` for a tag that doesn't exist
 # (Docker Hub, GHCR, the distribution registry); any other error fails
 NOT_FOUND = re.compile(r"not found|manifest unknown", re.IGNORECASE)
@@ -197,9 +201,14 @@ class Settings:
                 f"Invalid repository '{self.repository}': expected <owner>/<repo>"
             )
         try:
-            check_release.release_version(self.tag, self.prefix)
+            version = check_release.release_version(self.tag, self.prefix)
         except check_release.CheckError as error:
             raise ReleaseError(str(error)) from error
+        if len(version) > MAX_TAG_LENGTH:
+            raise ReleaseError(
+                f"Version '{version}' is longer than an image tag may be"
+                f" ({MAX_TAG_LENGTH} characters)"
+            )
 
 
 def _run(program: str, args: Sequence[str]) -> str:
@@ -213,10 +222,18 @@ def _run(program: str, args: Sequence[str]) -> str:
         The standard output.
 
     Raises:
-        ReleaseError: If the program fails; with its standard error.
+        ReleaseError: If the program fails, with its standard error, or
+            doesn't finish within `TIMEOUT`.
     """
     command = [program, *args]
-    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    try:
+        result = subprocess.run(
+            command, capture_output=True, text=True, check=False, timeout=TIMEOUT
+        )
+    except subprocess.TimeoutExpired as error:
+        raise ReleaseError(
+            f"{shlex.join(command)} didn't finish within {TIMEOUT} seconds"
+        ) from error
     if result.returncode != 0:
         raise ReleaseError(f"{shlex.join(command)} failed: {result.stderr.strip()}")
     return result.stdout
@@ -333,14 +350,12 @@ def _published(settings: Settings, gh: Runner) -> list[dict[str, object]]:
 
     Returns:
         The published releases (no drafts) whose tag is the prefix and a
-        version as publish-release reads it (e.g., `1.2.0`, `2.0`; without
-        another `v`, so that, with an empty prefix, `v1.2.0` doesn't
-        count), each as `publish-release` reads
-        them, with the version as `tag_name`. Their `prerelease` is
-        recomputed from the version (set if it has a pre-release), not
-        GitHub's flag, which `publish-release` sets for all versions below
-        1.0.0: so `publish-release`'s `is_latest` compares stable versions
-        only, those below 1.0.0 included (see `is_latest`).
+        version as publish-release reads it (see `_version`; e.g., `1.2.0`,
+        `2.0`), each as `publish-release` reads them, with the version as
+        `tag_name`. From 1.0.0, `prerelease` is GitHub's flag; below, it is
+        set from the version (if it has a pre-release), as `publish-release`
+        flags every release below 1.0.0, so that its `is_latest` compares
+        stable versions below 1.0.0 too (see `is_latest`).
 
     Raises:
         ReleaseError: If the releases can't be read.
@@ -356,35 +371,62 @@ def _published(settings: Settings, gh: Runner) -> list[dict[str, object]]:
     try:
         pages = json.loads(output)
         releases = [release for page in pages for release in page]
-        names = [str(r["tag_name"]) for r in releases if not r.get("draft")]
+        published = [
+            (str(r["tag_name"]), bool(r.get("prerelease")))
+            for r in releases
+            if not r.get("draft")
+        ]
     except (json.JSONDecodeError, TypeError, KeyError) as error:
         raise ReleaseError(f"Unexpected list of releases: {error}") from error
-    # Rank of "no pre-release" in publish-release's version keys
-    stable = publish_release.parse_version("0.0.0")[3]
     return [
-        {"tag_name": version, "prerelease": key[3] != stable, "draft": False}
-        for name in names
-        if name.startswith(settings.prefix)
-        # A `v` after the prefix belongs to another series (e.g., `v1.2.0`
-        # with an empty prefix)
-        and not (version := name[len(settings.prefix) :]).lower().startswith("v")
+        {
+            "tag_name": version,
+            # From 1.0.0, GitHub's flag (as publish-release reads it); below,
+            # the version's, as publish-release flags every 0.x release
+            "prerelease": prerelease if key[0] >= 1 else not _is_stable(version),
+            "draft": False,
+        }
+        for name, prerelease in published
+        if (version := _version(name, settings.prefix))
         and (key := publish_release.parse_version(version)) is not None
     ]
+
+
+def _version(name: str, prefix: str) -> str:
+    """Return the version of a tag with the prefix, if it has one.
+
+    Args:
+        name: Name of a tag.
+        prefix: Part of the tag before the version.
+
+    Returns:
+        The tag without the prefix; empty if the tag doesn't start with the
+        prefix or another `v` follows it (another series, e.g., `v1.2.0`
+        with an empty prefix).
+    """
+    if not name.startswith(prefix):
+        return ""
+    version = name[len(prefix) :]
+    return "" if version.lower().startswith("v") else version
 
 
 def _is_stable(version: str) -> bool:
     """Return whether a version is a release version without a pre-release.
 
     Args:
-        version: A version, e.g., `1.2.0` or `1.2.0rc1`.
+        version: A version, e.g., `1.2.0`, `2.0` or `1.2.0rc1`.
 
     Returns:
-        Whether it is a release version (as check-release accepts it) without
-        a pre-release (`a`, `alpha`, `b`, `beta`, `rc`); major version 0
-        included.
+        Whether it is a version as publish-release reads it, without a
+        leading `v` and without a pre-release (`a`, `alpha`, `b`, `beta`,
+        `rc`); major version 0 included.
     """
-    match = check_release.VERSION.fullmatch(version)
-    return match is not None and match["pre"] is None
+    key = publish_release.parse_version(version)
+    # Rank of "no pre-release" in publish-release's version keys
+    stable = publish_release.parse_version("0.0.0")[3]
+    return (
+        not version.lower().startswith("v") and key is not None and (key[3] == stable)
+    )
 
 
 def is_latest(
@@ -435,8 +477,8 @@ def is_latest(
     pending = sorted(
         (other_key, other)
         for name in names
-        if name.startswith(settings.prefix)
-        and (other := name[len(settings.prefix) :]) not in released
+        if (other := _version(name, settings.prefix))
+        and other not in released
         and _is_stable(other)
         and (other_key := publish_release.parse_version(other)) > key
     )
@@ -447,6 +489,36 @@ def is_latest(
                 " published yet"
             )
     return True, "highest stable release"
+
+
+def _tag(settings: Settings, reference: str, docker: Runner) -> None:
+    """Point an image tag to the digest, and check that it does.
+
+    Args:
+        settings: The settings.
+        reference: Image name and tag.
+        docker: Runs Docker.
+
+    Raises:
+        ReleaseError: If the tag can't be set, or doesn't point to the digest
+            afterwards.
+    """
+    # Copy the source as is: by default, buildx wraps a single manifest in a
+    # new index, with another digest
+    docker(
+        [
+            "buildx",
+            "imagetools",
+            "create",
+            "--prefer-index=false",
+            "--tag",
+            reference,
+            f"{settings.image}@{settings.digest}",
+        ]
+    )
+    actual = tag_digest(reference, docker)
+    if actual != settings.digest:
+        raise ReleaseError(f"{reference} points to {actual}, not to {settings.digest}")
 
 
 def tag(
@@ -471,34 +543,19 @@ def tag(
     # Again, right before tagging: another run may have tagged the version
     # since the first check (attesting and signing take minutes)
     check(settings, docker)
+    references = [f"{settings.image}:{settings.version}"]
+    _tag(settings, references[0], docker)
+    # Decided once the version is tagged, so that a concurrent release of a
+    # lower version sees it (see `is_latest`), and right before `latest` is
+    # set
     latest, reason = is_latest(settings, gh, docker)
     print(
         f"::notice title={TITLE}::latest {'set' if latest else 'not set'}: {reason}",
         file=sys.stderr,
     )
-    source = f"{settings.image}@{settings.digest}"
-    references = [f"{settings.image}:{settings.version}"]
     if latest:
         references.append(f"{settings.image}:latest")
-    for reference in references:
-        # Copy the source as is: by default, buildx wraps a single manifest
-        # in a new index, with another digest
-        docker(
-            [
-                "buildx",
-                "imagetools",
-                "create",
-                "--prefer-index=false",
-                "--tag",
-                reference,
-                source,
-            ]
-        )
-        actual = tag_digest(reference, docker)
-        if actual != settings.digest:
-            raise ReleaseError(
-                f"{reference} points to {actual}, not to {settings.digest}"
-            )
+        _tag(settings, references[1], docker)
     return {
         "version": settings.version,
         "latest": str(latest).lower(),

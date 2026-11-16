@@ -16,10 +16,10 @@ in this order:
 4. **signs** the digest with cosign (keyless, with the workflow's OIDC
    identity); the signature covers every tag of the digest;
 5. checks the version's image tag again (another run may have set it in
-   the meantime), then **tags** the digest `X.Y.Z` and, for the highest
-   stable release, `latest` (see [Latest](#latest)), copying it as is (no
-   new index around a single manifest), and checks that each tag points to
-   the digest.
+   the meantime), then **tags** the digest `X.Y.Z`, decides whether it is
+   the highest stable release, and if so tags it `latest` (see
+   [Latest](#latest)); tags copy the digest as is (no new index around a
+   single manifest), and each is checked to point to the digest.
 
 The first step fails before anything is attested, signed or tagged.
 
@@ -32,9 +32,10 @@ release's "Latest" flag, with the same code (`is_latest` in
 stable version than this one, and this one is stable. Stable versions have
 no pre-release (`a`, `alpha`, `b`, `beta`, `rc`), so pre-releases never
 become `latest`, and a patch of an older line (e.g., `1.2.1` after `1.3.0`)
-doesn't move it back. The decision is made when tagging, from the releases
-as they are then, so that a re-run of an older release doesn't move it back
-either.
+doesn't move it back. From 1.0.0, a release counts as a pre-release by
+GitHub's flag, as for publish-release. The decision is made after `X.Y.Z`
+is tagged, from the releases as they are then, so that a re-run of an older
+release doesn't move it back either.
 
 From 1.0.0, the image's `latest` and the GitHub release marked "Latest"
 are therefore the same release. Below 1.0.0, publish-release makes every
@@ -49,11 +50,14 @@ registry, but not released yet. A higher stable version tag of the
 repository whose image tag exists counts as released, so that a release of
 a lower version that runs in between doesn't take `latest` from it; a
 higher tag without an image (e.g., a release that failed before tagging)
-doesn't count.
+doesn't count. Two releases of one image that decide `latest` at the same
+time can still both set it, the lower one last: registries have no atomic
+"set if unchanged", so release jobs of one image run one at a time (see the
+concurrency group in [Usage](#usage)).
 
 With `tag-prefix`, only releases and tags that are the prefix followed
-by a version count, not by another `v` (e.g.,
-with `tag-prefix: chart-v`, a release `v9.0.0` doesn't keep `chart-v1.2.0`
+by a version as publish-release reads it count (e.g., `1.2.0` or `2.0`,
+not `v1.2.0`; with `tag-prefix: chart-v`, a release `v9.0.0` doesn't keep `chart-v1.2.0`
 from `latest`, but `chart-v1.3.0` does). With `latest: false`, the image
 never gets `latest` (e.g., for images that operators set by digest, or one
 repository with images of several packages), and the GitHub API isn't
