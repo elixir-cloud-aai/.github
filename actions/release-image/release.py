@@ -14,9 +14,11 @@ signs the digest between the two commands of this script:
     release, with `latest`, then check that each tag points to the digest.
 
 `latest` follows the rule of `publish-release`, whose code it uses (see
-`is_latest`), so that the image's `latest` and the GitHub release marked
-"Latest" are the same release. Only the prefix of the tag differs: tags of
-other prefixes (other packages or charts of the repository) don't count.
+`is_latest`), so that, from 1.0.0, the image's `latest` and the GitHub
+release marked "Latest" are the same release; below 1.0.0, where
+`publish-release` makes every release a pre-release, the highest stable
+version still gets `latest`. Tags of other prefixes (other packages or
+charts of the repository) don't count.
 
 The settings are read from the environment (see `Settings`). Errors are
 printed as error annotations to standard error; on success, the outputs are
@@ -328,9 +330,14 @@ def _published(settings: Settings, gh: Runner) -> list[dict[str, object]]:
         gh: Runs the GitHub CLI.
 
     Returns:
-        The published releases (no drafts) whose tag has the prefix, each as
-        `publish-release` reads them, with the version as `tag_name` and
-        `prerelease` set if the version has a pre-release (see `is_latest`).
+        The published releases (no drafts) whose tag is the prefix and a
+        release version (as check-release accepts it; e.g., with an empty
+        prefix, `v1.2.0` doesn't count), each as `publish-release` reads
+        them, with the version as `tag_name`. Their `prerelease` is
+        recomputed from the version (set if it has a pre-release), not
+        GitHub's flag, which `publish-release` sets for all versions below
+        1.0.0: so `publish-release`'s `is_latest` compares stable versions
+        only, those below 1.0.0 included (see `is_latest`).
 
     Raises:
         ReleaseError: If the releases can't be read.
@@ -353,23 +360,23 @@ def _published(settings: Settings, gh: Runner) -> list[dict[str, object]]:
         {"tag_name": version, "prerelease": not _is_stable(version), "draft": False}
         for name in names
         if name.startswith(settings.prefix)
-        and publish_release.parse_version(version := name[len(settings.prefix) :])
+        and check_release.VERSION.fullmatch(version := name[len(settings.prefix) :])
     ]
 
 
 def _is_stable(version: str) -> bool:
-    """Return whether a version has no pre-release (`a`, `b`, `rc`).
+    """Return whether a version is a release version without a pre-release.
 
     Args:
         version: A version, e.g., `1.2.0` or `1.2.0rc1`.
 
     Returns:
-        Whether it is a release version without a pre-release, in the order
-        of `publish-release` (major version 0 included).
+        Whether it is a release version (as check-release accepts it) without
+        a pre-release (`a`, `alpha`, `b`, `beta`, `rc`); major version 0
+        included.
     """
-    key = publish_release.parse_version(version)
-    # Rank of "no pre-release" in publish-release's version order
-    return key is not None and key[3] == publish_release._PRE_RANK[None]
+    match = check_release.VERSION.fullmatch(version)
+    return match is not None and match["pre"] is None
 
 
 def is_latest(
@@ -449,7 +456,8 @@ def tag(
         image references, space-separated).
 
     Raises:
-        ReleaseError: If a tag can't be set, or doesn't point to the digest
+        ReleaseError: If the version's tag points to another digest by now
+            (see `check`), a tag can't be set, or doesn't point to the digest
             afterwards.
     """
     latest, reason = is_latest(settings, gh, docker)
@@ -457,12 +465,27 @@ def tag(
         f"::notice title={TITLE}::latest {'set' if latest else 'not set'}: {reason}",
         file=sys.stderr,
     )
+    # Again, right before tagging: another run may have tagged the version
+    # since the first check (attesting and signing take minutes)
+    check(settings, docker)
     source = f"{settings.image}@{settings.digest}"
     references = [f"{settings.image}:{settings.version}"]
     if latest:
         references.append(f"{settings.image}:latest")
     for reference in references:
-        docker(["buildx", "imagetools", "create", "--tag", reference, source])
+        # Copy the source as is: by default, buildx wraps a single manifest
+        # in a new index, with another digest
+        docker(
+            [
+                "buildx",
+                "imagetools",
+                "create",
+                "--prefer-index=false",
+                "--tag",
+                reference,
+                source,
+            ]
+        )
         actual = tag_digest(reference, docker)
         if actual != settings.digest:
             raise ReleaseError(

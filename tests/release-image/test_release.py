@@ -192,9 +192,15 @@ class FakeDocker:
                     )
                     + "\n"
                 )
-            case ["buildx", "imagetools", "create", "--tag", ref, source]:
+            case ["buildx", "imagetools", "create", *options, "--tag", ref, source]:
                 if ref not in self.broken:
-                    self.manifests[ref] = self.manifests[source]
+                    # Without the option, buildx wraps a single manifest in
+                    # a new index, with another digest
+                    self.manifests[ref] = (
+                        self.manifests[source]
+                        if options == ["--prefer-index=false"]
+                        else "sha256:" + "c" * 64
+                    )
                 return ""
         raise AssertionError(f"Unexpected call: {args}")
 
@@ -204,7 +210,7 @@ class FakeDocker:
         Returns:
             The references, in order.
         """
-        return [c[4] for c in self.calls if c[2] == "create"]
+        return [c[-2] for c in self.calls if c[2] == "create"]
 
 
 class TestSettings(unittest.TestCase):
@@ -312,10 +318,10 @@ class TestModules(unittest.TestCase):
 
     def test_stable(self) -> None:
         """Stable versions have no pre-release, in publish-release's order."""
-        for version in ["0.1.0", "1.2.0", "10.0.0", "1.2"]:
+        for version in ["0.1.0", "1.2.0", "10.0.0"]:
             with self.subTest(version=version):
                 self.assertTrue(release._is_stable(version))
-        for version in ["1.2.0rc1", "1.2.0a0", "2.0.0-beta.1", "x", ""]:
+        for version in ["1.2.0rc1", "1.2.0a0", "2.0.0-beta.1", "1.2", "v1.2.0", ""]:
             with self.subTest(version=version):
                 self.assertFalse(release._is_stable(version))
 
@@ -454,9 +460,34 @@ class TestLatest(unittest.TestCase):
         self.assertFalse(self._latest(gh, tag="chart-v1.2.0", prefix="chart-v"))
 
     def test_empty_prefix(self) -> None:
-        """Without a prefix, tags of plain versions count."""
+        """Without a prefix, plain versions count, `v` tags don't."""
         gh = FakeGh([_release("1.3.0"), _release("v9.0.0")], ["1.3.0", "1.2.0"])
         self.assertFalse(self._latest(gh, tag="1.2.0", prefix=""))
+        gh = FakeGh([_release("1.1.0"), _release("v9.0.0")], ["v9.0.0", "1.2.0"])
+        self.assertTrue(self._latest(gh, tag="1.2.0", prefix=""))
+
+    def test_loose_versions(self) -> None:
+        """Releases that are no release versions after the prefix don't count."""
+        gh = FakeGh([_release("v2.0"), _release("v2.0.0.dev1"), _release("vx")])
+        self.assertTrue(self._latest(gh))
+
+    def test_gh_error(self) -> None:
+        """A failing `gh` fails the decision and leaves the tags as they are."""
+        for failing in ("releases", "matching-refs"):
+
+            def gh(args: Sequence[str], failing: str = failing) -> str:
+                if failing in args[-1] or failing in " ".join(args):
+                    raise release.ReleaseError("gh failed: HTTP 502")
+                return FakeGh()(args)
+
+            with self.subTest(failing=failing):
+                docker = FakeDocker()
+                with (
+                    redirect_stderr(io.StringIO()),
+                    self.assertRaisesRegex(release.ReleaseError, "HTTP 502"),
+                ):
+                    release.tag(_settings(), gh, docker)
+                self.assertEqual(docker.created(), [])
 
     def test_pending_release(self) -> None:
         """A higher version tagged in the registry, not yet released, wins."""
@@ -525,6 +556,49 @@ class TestTag(unittest.TestCase):
             ),
         ):
             release.tag(_settings(), FakeGh(), docker)
+
+    def test_copied_as_is(self) -> None:
+        """Tags copy the source as is (no new index around a manifest)."""
+        docker = FakeDocker()
+        with redirect_stderr(io.StringIO()):
+            release.tag(_settings(), FakeGh(), docker)
+        for call in docker.calls:
+            if call[2] == "create":
+                self.assertEqual(call[3], "--prefer-index=false")
+
+    def test_moved_meanwhile(self) -> None:
+        """A version tagged with another digest since `check` isn't moved."""
+        docker = FakeDocker()
+        release.check(_settings(), docker)
+        # Another run tags the version while this one attests and signs
+        docker.manifests[f"{IMAGE}:1.2.0"] = OTHER
+        with (
+            redirect_stderr(io.StringIO()),
+            self.assertRaisesRegex(release.ReleaseError, "already points to"),
+        ):
+            release.tag(_settings(), FakeGh(), docker)
+        self.assertEqual(docker.created(), [])
+        self.assertEqual(docker.manifests[f"{IMAGE}:1.2.0"], OTHER)
+
+
+class TestCreateError(unittest.TestCase):
+    """A tag that can't be created."""
+
+    def test_create_fails(self) -> None:
+        """A failing `imagetools create` fails before `latest` is set."""
+        docker = FakeDocker()
+
+        def failing(args: Sequence[str]) -> str:
+            if args[2] == "create":
+                raise release.ReleaseError("docker failed: denied")
+            return docker(args)
+
+        with (
+            redirect_stderr(io.StringIO()),
+            self.assertRaisesRegex(release.ReleaseError, "denied"),
+        ):
+            release.tag(_settings(), FakeGh(), failing)
+        self.assertNotIn(f"{IMAGE}:latest", docker.manifests)
 
 
 class TestMain(unittest.TestCase):
@@ -636,10 +710,11 @@ class TestMain(unittest.TestCase):
         )
         calls = log.read_text(encoding="utf-8").splitlines()
         self.assertIn(
-            f"docker buildx imagetools create --tag {IMAGE}:latest {IMAGE}@{DIGEST}",
+            "docker buildx imagetools create --prefer-index=false"
+            f" --tag {IMAGE}:latest {IMAGE}@{DIGEST}",
             calls,
         )
-        self.assertEqual(len(calls), 8, calls)
+        self.assertEqual(len(calls), 10, calls)
 
     def test_run(self) -> None:
         """`_run` returns the output of a program, and fails with its error."""

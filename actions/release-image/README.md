@@ -49,7 +49,8 @@ a lower version that runs in between doesn't take `latest` from it; a
 higher tag without an image (e.g., a release that failed before tagging)
 doesn't count.
 
-With `tag-prefix`, only releases and tags with that prefix count (e.g.,
+With `tag-prefix`, only releases and tags that are the prefix followed
+by a release version (as check-release accepts it) count (e.g.,
 with `tag-prefix: chart-v`, a release `v9.0.0` doesn't keep `chart-v1.2.0`
 from `latest`, but `chart-v1.3.0` does). With `latest: false`, the image
 never gets `latest` (e.g., for images that operators set by digest, or one
@@ -113,8 +114,8 @@ action once per image.
 Outputs of a matrix job can't tell its entries apart, so a `push` job with
 a matrix of images hands each digest over as an artifact named after its
 entry, and the release job, with the same matrix, reads it back. The
-action checks the digest's format, so reading the file is all that is
-needed:
+action checks the digest's format, so reading the file's first line is
+all that is needed:
 
 ```yaml
   push:
@@ -135,11 +136,16 @@ needed:
           # A re-run of all jobs pushes a new digest, which replaces the
           # artifact (and which the action then refuses)
           overwrite: true
-          retention-days: 1
+          # Long enough for an approval of the `release` environment, or a
+          # re-run of failed jobs, days later
+          retention-days: 7
 
   release-image:
     needs: [prepare, push, scan]
     strategy:
+      # A failing entry must not cancel another one between signing and
+      # tagging
+      fail-fast: false
       matrix:
         image: [taskmaster, filer]
     # ... environment, concurrency, permissions, login as above ...
@@ -151,7 +157,10 @@ needed:
           path: ${{ runner.temp }}
       - name: Read image digest
         id: digest
-        run: echo "digest=$(< "${RUNNER_TEMP}/digest.txt")" >> "${GITHUB_OUTPUT}"
+        # The first line only, so that the file can't set other outputs
+        run: |
+          read -r digest < "${RUNNER_TEMP}/digest.txt"
+          echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
       - name: Release image
         uses: elixir-cloud-aai/.github/actions/release-image@<commit SHA> # vX.Y.Z
         with:
@@ -162,7 +171,12 @@ needed:
 In a matrix, the entries share a job-level concurrency group, and a group
 holds one running and one pending job: put the entry's name in the group
 (e.g., `${{ github.workflow }}-release-image-${{ matrix.image }}`), so that
-releases of the same image run one at a time and no entry cancels another.
+releases of the same image run one at a time and the entries of one release
+don't cancel each other. With or without a matrix, a third release that
+queues for the group cancels the pending one: re-run the failed jobs of
+the cancelled release (its digest is unchanged, so that is safe).
+Independently of the group, the action checks the version's tag again right
+before tagging.
 
 Tags with a prefix set `tag-prefix` (e.g., foca-plugins:
 `tag-prefix: foca-plugin-tes-data-crypt4gh-v` and `latest: "false"`); the
