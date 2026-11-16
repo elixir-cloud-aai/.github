@@ -380,12 +380,28 @@ class TestCheck(unittest.TestCase):
             release.check(_settings(), docker)
 
     def test_not_found_messages(self) -> None:
-        """Both registries' messages for missing tags count as missing."""
-        for message in ["ERROR: x: not found", "MANIFEST_UNKNOWN: manifest unknown"]:
+        """Only confirmed missing manifests of the reference count as missing."""
+        reference = f"{IMAGE}:1.2.0"
+        for message in [
+            f"docker ... failed: ERROR: {reference}: not found",
+            f"docker ... failed: ERROR: {reference}: not found\n",
+            "docker ... failed: MANIFEST_UNKNOWN: manifest unknown",
+        ]:
             with self.subTest(message=message):
                 docker = FakeDocker()
                 docker.error = message
-                self.assertIsNone(release.tag_digest(f"{IMAGE}:1.2.0", docker))
+                self.assertIsNone(release.tag_digest(reference, docker))
+        for message in [
+            "ERROR: x: not found",
+            f"ERROR: {reference}: not found\nERROR: and then something else",
+            "ERROR: failed to do request: proxy: host not found",
+            "manifest unknown to the proxy",
+        ]:
+            with self.subTest(message=message):
+                docker = FakeDocker()
+                docker.error = message
+                with self.assertRaisesRegex(release.ReleaseError, "Could not read"):
+                    release.tag_digest(reference, docker)
 
     def test_bad_manifest(self) -> None:
         """Output without a digest fails."""
@@ -707,7 +723,7 @@ class TestMain(unittest.TestCase):
             # The version's tag exists once it was created
             'case "$3 $4" in\n'
             f'  "inspect {IMAGE}:1.2.0") if ! grep -q create "{log}"; then\n'
-            '      echo "ERROR: not found" >&2; exit 1; fi\n'
+            '      echo "ERROR: $4: not found" >&2; exit 1; fi\n'
             f"    echo '{manifest}' ;;\n"
             f"  inspect*) echo '{manifest}' ;;\n"
             "esac\n",

@@ -101,9 +101,11 @@ LATEST = ("auto", "false")
 MAX_TAG_LENGTH = 128
 # Time limit of each call of `gh` or `docker`, in seconds
 TIMEOUT = 300
-# Errors of `docker buildx imagetools inspect` for a tag that doesn't exist
-# (Docker Hub, GHCR, the distribution registry); any other error fails
-NOT_FOUND = re.compile(r"not found|manifest unknown", re.IGNORECASE)
+# Errors of `docker buildx imagetools inspect` for a tag that doesn't exist:
+# buildx's `<reference>: not found` as the last line, or the registry's
+# MANIFEST_UNKNOWN error code (OCI distribution spec); any other error,
+# whatever it says, fails
+MANIFEST_UNKNOWN = re.compile(r"\bMANIFEST_UNKNOWN\b")
 
 
 class ReleaseError(Exception):
@@ -227,7 +229,9 @@ def _run(program: str, args: Sequence[str]) -> str:
     """
     command = [program, *args]
     try:
-        result = subprocess.run(
+        # An argument list without a shell, of a fixed program (`gh` or
+        # `docker`), with validated settings: nothing is interpreted
+        result = subprocess.run(  # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
             command, capture_output=True, text=True, check=False, timeout=TIMEOUT
         )
     except subprocess.TimeoutExpired as error:
@@ -290,7 +294,10 @@ def tag_digest(reference: str, docker: Runner) -> str | None:
     try:
         output = docker(args)
     except ReleaseError as error:
-        if NOT_FOUND.search(str(error)):
+        last = str(error).rstrip().rsplit("\n", 1)[-1]
+        if last.endswith(f"{reference}: not found") or MANIFEST_UNKNOWN.search(
+            str(error)
+        ):
             return None
         raise ReleaseError(f"Could not read {reference}: {error}") from error
     try:

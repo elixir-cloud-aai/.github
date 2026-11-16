@@ -294,6 +294,12 @@ jobs:
           IMAGE: localhost:5000/release-image-test
         run: |
           docker run --detach --publish 5000:5000 --name registry registry:3.0.0
+          # Until the registry accepts requests (at most 30 seconds)
+          for _ in $(seq 30); do
+            curl --silent --fail http://localhost:5000/v2/ > /dev/null && break
+            sleep 1
+          done
+          curl --silent --show-error --fail http://localhost:5000/v2/ > /dev/null
           for name in a b; do
             context="${RUNNER_TEMP}/image-${name}"
             mkdir -p "${context}"
