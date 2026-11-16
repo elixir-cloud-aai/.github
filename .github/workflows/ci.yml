@@ -59,6 +59,10 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      # check-release: read the CI runs of a release commit
+      actions: read
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -181,6 +185,97 @@ jobs:
         run: |
           if [[ "${OUTCOME}" != failure ]]; then
             echo "::error::Expected the check of the released tag to fail, got ${OUTCOME}"
+            exit 1
+          fi
+      # check-release: the script (versions, citation metadata, the checks
+      # of tag, branch and CI against a stand-in for `gh`)
+      - name: Test check-release script
+        run: bash tests/check-release/test.sh
+      # check-release: the checks against this repository's real API.
+      # Depends on this repository's releases and tags: v1.0.0 is a
+      # lightweight tag, and the latest release has a signed annotated tag
+      # of a commit on `main` for which CI passed (each release requires
+      # it, so the CI run is recent); there is no CITATION.cff. The script
+      # runs as the action runs it, so that each case can assert its error;
+      # the action itself runs once, for its wiring (inputs reaching the
+      # script, outputs)
+      - name: Find the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Not the fork's, which has other releases (public data)
+          GH_REPO: elixir-cloud-aai/.github
+        run: |
+          tag="$(gh release view --json tagName --jq .tagName)"
+          if [[ ! "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Unexpected latest release '${tag}'"
+            exit 1
+          fi
+          object="$(gh api "repos/${GH_REPO}/git/ref/tags/${tag}" --jq .object.sha)"
+          sha="$(gh api "repos/${GH_REPO}/git/tags/${object}" --jq .object.sha)"
+          if [[ ! "${sha}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Unexpected commit '${sha}' of ${tag}"
+            exit 1
+          fi
+          {
+            echo "RELEASED_TAG=${tag}"
+            echo "RELEASED_VERSION=${tag#v}"
+            echo "RELEASED_SHA=${sha}"
+          } >> "${GITHUB_ENV}"
+      - name: Check release tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Not the fork's, which has other tags and runs (public data)
+          GH_REPO: elixir-cloud-aai/.github
+          TAG_PREFIX: v
+          BRANCH: main
+          WORKFLOW: ci.yml
+          CI_BRANCH: main
+        run: |
+          # Another commit SHA, of no commit
+          other=0123456789abcdef0123456789abcdef01234567
+          # <tag> <commit> <citation> <expected errors...>
+          expect() {
+            local out message
+            if out="$(TAG="$1" COMMIT="$2" CITATION="$3" \
+              python3 -I actions/check-release/check.py 2>&1)"; then
+              echo "::error::Expected the check of $1 at $2 to fail"
+              exit 1
+            fi
+            for message in "${@:4}"; do
+              if [[ "${out}" != *"${message}"* ]]; then
+                echo "::error::Expected '${message}', got: ${out}"
+                exit 1
+              fi
+            done
+          }
+          expect v1.0.0 "${RELEASED_SHA}" "" "Tag 'v1.0.0' is not annotated"
+          expect "${RELEASED_TAG}" "${other}" "" "not to the commit of the run" \
+            "Could not compare" "No successful run of the CI workflow"
+          expect v1.2 "${RELEASED_SHA}" "" "Tag 'v1.2' is no release version"
+          expect "${RELEASED_TAG}" "${RELEASED_SHA}" CITATION.cff \
+            "Could not read CITATION.cff"
+      # The action uses the run's repository: only here, not in forks
+      - name: Check a released tag with the action
+        id: release-check
+        if: github.repository == 'elixir-cloud-aai/.github'
+        uses: ./actions/check-release
+        with:
+          tag: ${{ env.RELEASED_TAG }}
+          commit: ${{ env.RELEASED_SHA }}
+          ci-branch: main
+          citation: ""
+          version: ${{ env.RELEASED_VERSION }}
+      - name: Expect the outputs of the released tag
+        if: github.repository == 'elixir-cloud-aai/.github'
+        env:
+          OUTPUTS: >-
+            ${{ steps.release-check.outputs.version }}
+            ${{ steps.release-check.outputs.prerelease }}
+            ${{ steps.release-check.outputs.sha }}
+        run: |
+          expected="${RELEASED_VERSION} false ${RELEASED_SHA}"
+          if [[ "${OUTPUTS}" != "${expected}" ]]; then
+            echo "::error::Expected outputs '${expected}', got '${OUTPUTS}'"
             exit 1
           fi
       # scan-image: the pip check (`check-pip.sh`), on made-up reports and

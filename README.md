@@ -108,6 +108,9 @@ issues and pull requests keep it; GitHub's default labels (`bug`,
 Composite actions, in `actions/<name>/`, that the other repositories share
 and pin to the commit of a release:
 
+- [`check-release`](actions/check-release/README.md): checks the tag and
+  the commit of a release (signed tag, release branch, CI passed, versions
+  in `CITATION.cff` and the package) before anything is built.
 - [`gate`](actions/gate/README.md): checks the results of the jobs a CI gate
   needs.
 - [`pr-title`](actions/pr-title/README.md): checks pull request titles.
@@ -130,10 +133,10 @@ hooks of `.pre-commit-config.yaml`: YAML syntax and GitHub's schemas (issue
 forms, workflows, actions, Dependabot), Markdown style (markdownlint),
 secrets (gitleaks), shell scripts (shellcheck) and the workflows
 (actionlint). Its `test` job runs the tests of the composite actions
-(`tests/<action>/test.sh`; those of `publish-release` use Python's
-`unittest`, as its script uses the standard library only), the actions
-themselves and the tests of the
-release scripts (`tests/release/test.sh`). Run them locally before you push:
+(`tests/<action>/test.sh`; those of `publish-release` and `check-release`
+use Python's `unittest`, as their scripts use the standard library only),
+the actions themselves and the tests of the release scripts
+(`tests/release/test.sh`). Run them locally before you push:
 
 ```sh
 pre-commit install
@@ -144,6 +147,7 @@ bash tests/pr-title/test.sh
 bash tests/gate/test.sh
 bash tests/labels/test.sh
 bash tests/publish-release/test.sh
+bash tests/check-release/test.sh
 bash tests/scan-image/test.sh
 bash tests/release/test.sh
 ```
