@@ -1,0 +1,100 @@
+---
+# Called from the job of each repository's release workflow that releases an
+# image after it was pushed by digest and scanned: the caller logs in to the
+# registry and grants `id-token: write` and `attestations: write`. See the
+# README of this action
+name: Release image
+description: >-
+  Release an image pushed by digest: check that its version isn't published
+  with another digest, attest its build provenance, sign it with cosign
+  (keyless), tag it with the version and, for the highest stable release,
+  `latest`, and check that each tag points to the digest.
+inputs:
+  image:
+    description: >-
+      Fully qualified image name, without tag or digest, e.g.,
+      `docker.io/elixircloud/tesk-api`.
+    required: true
+  digest:
+    description: Digest of the image to release (`sha256:` and 64 hex digits).
+    required: true
+  tag:
+    description: >-
+      Git tag of the release, whose version (the tag without `tag-prefix`) is
+      the image tag. Default is the tag of the workflow run.
+    required: false
+    default: ${{ github.ref_name }}
+  tag-prefix:
+    description: >-
+      Part of the Git tag before the version, e.g., `chart-v` for tags like
+      `chart-v1.0.0`; only releases with this prefix decide `latest`.
+    required: false
+    default: v
+  latest:
+    description: >-
+      `auto` to also tag `latest` for the highest stable release (as
+      publish-release decides the latest release), `false` never to.
+    required: false
+    default: auto
+  token:
+    description: >-
+      Token for the GitHub API, to read the releases and tags for `latest`;
+      needs `contents: read`.
+    required: false
+    default: ${{ github.token }}
+outputs:
+  version:
+    description: The version, the image tag (the Git tag without `tag-prefix`).
+    value: ${{ steps.tag.outputs.version }}
+  latest:
+    description: "`true` if the image was tagged `latest`, else `false`."
+    value: ${{ steps.tag.outputs.latest }}
+  tags:
+    description: The image references that were tagged, space-separated.
+    value: ${{ steps.tag.outputs.tags }}
+runs:
+  using: composite
+  steps:
+    # Before anything is attested or signed. Inputs go in through the
+    # environment, never into the script
+    - name: Check image and version
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+        DIGEST: ${{ inputs.digest }}
+        TAG: ${{ inputs.tag }}
+        TAG_PREFIX: ${{ inputs.tag-prefix }}
+        LATEST: ${{ inputs.latest }}
+        GH_REPO: ${{ github.repository }}
+      run: python3 -I "${GITHUB_ACTION_PATH}/release.py" check
+    - name: Attest build provenance
+      uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+      with:
+        subject-name: ${{ inputs.image }}
+        subject-digest: ${{ inputs.digest }}
+        push-to-registry: true
+        # No artifact metadata storage record (needs another permission)
+        create-storage-record: false
+    - name: Install cosign
+      uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+    # The signature covers the digest, and so every tag of it
+    - name: Sign image
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+        DIGEST: ${{ inputs.digest }}
+      run: cosign sign --yes "${IMAGE}@${DIGEST}"
+    # Decided last, from the releases and tags as they are now, so that a
+    # re-run of an older release doesn't move `latest` back
+    - name: Tag image
+      id: tag
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        GH_REPO: ${{ github.repository }}
+        IMAGE: ${{ inputs.image }}
+        DIGEST: ${{ inputs.digest }}
+        TAG: ${{ inputs.tag }}
+        TAG_PREFIX: ${{ inputs.tag-prefix }}
+        LATEST: ${{ inputs.latest }}
+      run: python3 -I "${GITHUB_ACTION_PATH}/release.py" tag

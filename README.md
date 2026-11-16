@@ -117,6 +117,10 @@ and pin to the commit of a release:
 - [`publish-release`](actions/publish-release/README.md): creates the
   GitHub release of a tag with the curated notes followed by GitHub's
   generated notes, the organisation's release notes format.
+- [`release-image`](actions/release-image/README.md): releases an image
+  pushed by digest: checks that its version doesn't point to another
+  digest, attests and signs it, and tags it with the version and, for the
+  highest stable release, `latest`.
 - [`scan-image`](actions/scan-image/README.md): scans Docker images with
   Trivy.
 
@@ -133,8 +137,9 @@ hooks of `.pre-commit-config.yaml`: YAML syntax and GitHub's schemas (issue
 forms, workflows, actions, Dependabot), Markdown style (markdownlint),
 secrets (gitleaks), shell scripts (shellcheck) and the workflows
 (actionlint). Its `test` job runs the tests of the composite actions
-(`tests/<action>/test.sh`; those of `publish-release` and `check-release`
-use Python's `unittest`, as their scripts use the standard library only),
+(`tests/<action>/test.sh`; those of `publish-release`, `check-release`
+and `release-image` use Python's `unittest`, as their scripts use the
+standard library only),
 the actions themselves and the tests of the release scripts
 (`tests/release/test.sh`). Run them locally before you push:
 
@@ -148,6 +153,7 @@ bash tests/gate/test.sh
 bash tests/labels/test.sh
 bash tests/publish-release/test.sh
 bash tests/check-release/test.sh
+bash tests/release-image/test.sh
 bash tests/scan-image/test.sh
 bash tests/release/test.sh
 ```
