@@ -298,9 +298,18 @@ jobs:
             context="${RUNNER_TEMP}/image-${name}"
             mkdir -p "${context}"
             echo "${name}" > "${context}/${name}"
+            # A single image manifest (no attestations, so no index), which
+            # buildx would wrap in a new index unless told not to
             printf 'FROM scratch\nCOPY %s /\n' "${name}" \
-              | docker build --tag "${IMAGE}:build-${name}" --file - "${context}"
+              | docker build --provenance=false --sbom=false \
+                --tag "${IMAGE}:build-${name}" --file - "${context}"
             docker push "${IMAGE}:build-${name}"
+            type="$(docker buildx imagetools inspect --raw "${IMAGE}:build-${name}" \
+              | jq -r .mediaType)"
+            if [[ "${type}" != *manifest.v* ]]; then
+              echo "::error::Expected a single image manifest, got ${type}"
+              exit 1
+            fi
             digest="$(docker buildx imagetools inspect "${IMAGE}:build-${name}" \
               --format '{{ json .Manifest }}' | jq -r .digest)"
             echo "DIGEST_${name^^}=${digest}" >> "${GITHUB_ENV}"

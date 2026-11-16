@@ -467,9 +467,11 @@ class TestLatest(unittest.TestCase):
         self.assertTrue(self._latest(gh, tag="1.2.0", prefix=""))
 
     def test_loose_versions(self) -> None:
-        """Releases that are no release versions after the prefix don't count."""
-        gh = FakeGh([_release("v2.0"), _release("v2.0.0.dev1"), _release("vx")])
+        """Releases count as publish-release reads them, others don't."""
+        gh = FakeGh([_release("v2.0.0.dev1"), _release("vx"), _release("vv9.0.0")])
         self.assertTrue(self._latest(gh))
+        # A two-part version, as publish-release counts it
+        self.assertFalse(self._latest(FakeGh([_release("v2.0")])))
 
     def test_gh_error(self) -> None:
         """A failing `gh` fails the decision and leaves the tags as they are."""
@@ -562,9 +564,10 @@ class TestTag(unittest.TestCase):
         docker = FakeDocker()
         with redirect_stderr(io.StringIO()):
             release.tag(_settings(), FakeGh(), docker)
-        for call in docker.calls:
-            if call[2] == "create":
-                self.assertEqual(call[3], "--prefer-index=false")
+        creates = [call for call in docker.calls if call[2] == "create"]
+        self.assertEqual(len(creates), 2)
+        for call in creates:
+            self.assertEqual(call[3], "--prefer-index=false")
 
     def test_moved_meanwhile(self) -> None:
         """A version tagged with another digest since `check` isn't moved."""
@@ -572,17 +575,18 @@ class TestTag(unittest.TestCase):
         release.check(_settings(), docker)
         # Another run tags the version while this one attests and signs
         docker.manifests[f"{IMAGE}:1.2.0"] = OTHER
+        gh = FakeGh()
+        err = io.StringIO()
         with (
-            redirect_stderr(io.StringIO()),
+            redirect_stderr(err),
             self.assertRaisesRegex(release.ReleaseError, "already points to"),
         ):
-            release.tag(_settings(), FakeGh(), docker)
+            release.tag(_settings(), gh, docker)
         self.assertEqual(docker.created(), [])
         self.assertEqual(docker.manifests[f"{IMAGE}:1.2.0"], OTHER)
-
-
-class TestCreateError(unittest.TestCase):
-    """A tag that can't be created."""
+        # Stopped before deciding `latest`
+        self.assertEqual(gh.calls, [])
+        self.assertNotIn("latest", err.getvalue())
 
     def test_create_fails(self) -> None:
         """A failing `imagetools create` fails before `latest` is set."""

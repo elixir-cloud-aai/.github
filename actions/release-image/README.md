@@ -15,8 +15,10 @@ in this order:
    (`actions/attest-build-provenance`, pushed to the registry);
 4. **signs** the digest with cosign (keyless, with the workflow's OIDC
    identity); the signature covers every tag of the digest;
-5. **tags** the digest `X.Y.Z` and, for the highest stable release,
-   `latest` (see [Latest](#latest)), and checks that each tag points to
+5. checks the version's image tag again (another run may have set it in
+   the meantime), then **tags** the digest `X.Y.Z` and, for the highest
+   stable release, `latest` (see [Latest](#latest)), copying it as is (no
+   new index around a single manifest), and checks that each tag points to
    the digest.
 
 The first step fails before anything is attested, signed or tagged.
@@ -50,7 +52,7 @@ higher tag without an image (e.g., a release that failed before tagging)
 doesn't count.
 
 With `tag-prefix`, only releases and tags that are the prefix followed
-by a release version (as check-release accepts it) count (e.g.,
+by a version count, not by another `v` (e.g.,
 with `tag-prefix: chart-v`, a release `v9.0.0` doesn't keep `chart-v1.2.0`
 from `latest`, but `chart-v1.3.0` does). With `latest: false`, the image
 never gets `latest` (e.g., for images that operators set by digest, or one

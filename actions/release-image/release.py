@@ -10,7 +10,9 @@ signs the digest between the two commands of this script:
     release tag) and the version's image tag doesn't exist yet or points to
     the digest already (a re-run of the same release). A published version
     never moves to another digest.
-`tag`: tag the digest with the version and, if it is the highest stable
+`tag`: check the version's image tag again (another run may have set it
+    since `check`), then tag the digest, copied as is (no new index around
+    a single manifest), with the version and, if it is the highest stable
     release, with `latest`, then check that each tag points to the digest.
 
 `latest` follows the rule of `publish-release`, whose code it uses (see
@@ -331,8 +333,9 @@ def _published(settings: Settings, gh: Runner) -> list[dict[str, object]]:
 
     Returns:
         The published releases (no drafts) whose tag is the prefix and a
-        release version (as check-release accepts it; e.g., with an empty
-        prefix, `v1.2.0` doesn't count), each as `publish-release` reads
+        version as publish-release reads it (e.g., `1.2.0`, `2.0`; without
+        another `v`, so that, with an empty prefix, `v1.2.0` doesn't
+        count), each as `publish-release` reads
         them, with the version as `tag_name`. Their `prerelease` is
         recomputed from the version (set if it has a pre-release), not
         GitHub's flag, which `publish-release` sets for all versions below
@@ -356,11 +359,16 @@ def _published(settings: Settings, gh: Runner) -> list[dict[str, object]]:
         names = [str(r["tag_name"]) for r in releases if not r.get("draft")]
     except (json.JSONDecodeError, TypeError, KeyError) as error:
         raise ReleaseError(f"Unexpected list of releases: {error}") from error
+    # Rank of "no pre-release" in publish-release's version keys
+    stable = publish_release.parse_version("0.0.0")[3]
     return [
-        {"tag_name": version, "prerelease": not _is_stable(version), "draft": False}
+        {"tag_name": version, "prerelease": key[3] != stable, "draft": False}
         for name in names
         if name.startswith(settings.prefix)
-        and check_release.VERSION.fullmatch(version := name[len(settings.prefix) :])
+        # A `v` after the prefix belongs to another series (e.g., `v1.2.0`
+        # with an empty prefix)
+        and not (version := name[len(settings.prefix) :]).lower().startswith("v")
+        and (key := publish_release.parse_version(version)) is not None
     ]
 
 
@@ -460,14 +468,14 @@ def tag(
             (see `check`), a tag can't be set, or doesn't point to the digest
             afterwards.
     """
+    # Again, right before tagging: another run may have tagged the version
+    # since the first check (attesting and signing take minutes)
+    check(settings, docker)
     latest, reason = is_latest(settings, gh, docker)
     print(
         f"::notice title={TITLE}::latest {'set' if latest else 'not set'}: {reason}",
         file=sys.stderr,
     )
-    # Again, right before tagging: another run may have tagged the version
-    # since the first check (attesting and signing take minutes)
-    check(settings, docker)
     source = f"{settings.image}@{settings.digest}"
     references = [f"{settings.image}:{settings.version}"]
     if latest:
