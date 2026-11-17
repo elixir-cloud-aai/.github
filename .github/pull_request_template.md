@@ -29,6 +29,8 @@ Write "None" if there are none. -->
 - [ ] Tests are added or updated where the change affects behaviour, and
       pass.
 - [ ] The documentation is updated where the change affects it.
+- [ ] User-facing change: the [docs site](https://github.com/elixir-cloud-aai/docs)
+      is updated, or an issue is opened there (or not needed).
 - [ ] The title follows [Conventional
       Commits](https://www.conventionalcommits.org/) (at most 50 characters,
       imperative mood, no trailing period).
