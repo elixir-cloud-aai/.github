@@ -278,6 +278,121 @@ jobs:
             echo "::error::Expected outputs '${expected}', got '${OUTPUTS}'"
             exit 1
           fi
+      # release-image: the script (settings, the check of the version's
+      # image tag, the `latest` decision and the tagging, against stand-ins
+      # for `gh` and `docker`)
+      - name: Test release-image script
+        run: bash tests/release-image/test.sh
+      # release-image: the script's checks and tags against a local
+      # registry (two images, pushed by digest) and this repository's real
+      # releases (v1.0.0 has a published release with a lower version than
+      # the latest one; no version 999.0.0 or higher exists). Attesting and
+      # signing need `id-token: write` and would publish attestations and
+      # transparency log entries for test images, so they aren't run here
+      - name: Push images to a local registry
+        env:
+          IMAGE: localhost:5000/release-image-test
+        run: |
+          docker run --detach --publish 5000:5000 --name registry registry:3.0.0
+          # Until the registry accepts requests (at most 30 seconds)
+          for _ in $(seq 30); do
+            curl --silent --fail http://localhost:5000/v2/ > /dev/null && break
+            sleep 1
+          done
+          curl --silent --show-error --fail http://localhost:5000/v2/ > /dev/null
+          for name in a b; do
+            context="${RUNNER_TEMP}/image-${name}"
+            mkdir -p "${context}"
+            echo "${name}" > "${context}/${name}"
+            # A single image manifest (no attestations, so no index), which
+            # buildx would wrap in a new index unless told not to
+            printf 'FROM scratch\nCOPY %s /\n' "${name}" \
+              | docker build --provenance=false --sbom=false \
+                --tag "${IMAGE}:build-${name}" --file - "${context}"
+            docker push "${IMAGE}:build-${name}"
+            type="$(docker buildx imagetools inspect --raw "${IMAGE}:build-${name}" \
+              | jq -r .mediaType)"
+            if [[ "${type}" != *manifest.v* ]]; then
+              echo "::error::Expected a single image manifest, got ${type}"
+              exit 1
+            fi
+            digest="$(docker buildx imagetools inspect "${IMAGE}:build-${name}" \
+              --format '{{ json .Manifest }}' | jq -r .digest)"
+            echo "DIGEST_${name^^}=${digest}" >> "${GITHUB_ENV}"
+          done
+      - name: Check and tag images in the local registry
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Not the fork's, which has other releases (public data)
+          GH_REPO: elixir-cloud-aai/.github
+          IMAGE: localhost:5000/release-image-test
+          TAG_PREFIX: v
+          LATEST: auto
+        run: |
+          script=actions/release-image/release.py
+          # <image tag> <expected digest>
+          expect_tag() {
+            local actual
+            actual="$(docker buildx imagetools inspect "${IMAGE}:$1" \
+              --format '{{ json .Manifest }}' | jq -r .digest)"
+            if [[ "${actual}" != "$2" ]]; then
+              echo "::error::Expected ${IMAGE}:$1 at $2, got ${actual}"
+              exit 1
+            fi
+          }
+          # The highest release: the version and `latest`
+          TAG=v999.0.0 DIGEST="${DIGEST_A}" python3 -I "${script}" check
+          out="$(TAG=v999.0.0 DIGEST="${DIGEST_A}" python3 -I "${script}" tag)"
+          [[ "${out}" == *"latest=true"* ]] || { echo "::error::${out}"; exit 1; }
+          expect_tag 999.0.0 "${DIGEST_A}"
+          expect_tag latest "${DIGEST_A}"
+          # A re-run with the same digest passes; another digest fails
+          TAG=v999.0.0 DIGEST="${DIGEST_A}" python3 -I "${script}" check
+          if out="$(TAG=v999.0.0 DIGEST="${DIGEST_B}" \
+            python3 -I "${script}" check 2>&1)"; then
+            echo "::error::Expected another digest of 999.0.0 to fail"
+            exit 1
+          fi
+          [[ "${out}" == *"already points to ${DIGEST_A}"* ]] \
+            || { echo "::error::${out}"; exit 1; }
+          # A lower release gets its version only; `latest` stays
+          out="$(TAG=v1.0.0 DIGEST="${DIGEST_B}" python3 -I "${script}" tag)"
+          [[ "${out}" == *"latest=false"* ]] || { echo "::error::${out}"; exit 1; }
+          expect_tag 1.0.0 "${DIGEST_B}"
+          expect_tag latest "${DIGEST_A}"
+          # Never `latest`, even for the highest version
+          out="$(TAG=v1000.0.0 DIGEST="${DIGEST_B}" LATEST=false GH_REPO='' \
+            python3 -I "${script}" tag)"
+          [[ "${out}" == *"latest=false"* ]] || { echo "::error::${out}"; exit 1; }
+          expect_tag 1000.0.0 "${DIGEST_B}"
+          expect_tag latest "${DIGEST_A}"
+      # The action itself, for its wiring (inputs reaching the script): it
+      # stops at its first step, as 999.0.0 points to another digest,
+      # before anything is attested or signed
+      - name: Release an image whose version points to another digest
+        id: moved-version
+        continue-on-error: true
+        uses: ./actions/release-image
+        with:
+          image: localhost:5000/release-image-test
+          digest: ${{ env.DIGEST_B }}
+          tag: v999.0.0
+      - name: Expect the release of the moved version to fail
+        env:
+          OUTCOME: ${{ steps.moved-version.outcome }}
+          IMAGE: localhost:5000/release-image-test
+        run: |
+          if [[ "${OUTCOME}" != failure ]]; then
+            echo "::error::Expected the release of the moved version to fail, got ${OUTCOME}"
+            exit 1
+          fi
+          # Stopped before tagging: 999.0.0 still points to the first image
+          actual="$(docker buildx imagetools inspect "${IMAGE}:999.0.0" \
+            --format '{{ json .Manifest }}' | jq -r .digest)"
+          if [[ "${actual}" != "${DIGEST_A}" ]]; then
+            echo "::error::Expected ${IMAGE}:999.0.0 at ${DIGEST_A}, got ${actual}"
+            exit 1
+          fi
       # scan-image: the pip check (`check-pip.sh`), on made-up reports and
       # on reports cut down from real Trivy scans
       - name: Test scan-image pip check
