@@ -16,6 +16,7 @@ repositories:
   - drs-filer
   - foca
   - foca-plugins
+  - ga4gh-io-schema
   - generic-issues
   - krini
   - landing-page
